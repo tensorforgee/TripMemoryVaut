@@ -1,0 +1,14 @@
+node_modules/
+.pnpm/
+.expo/
+dist/
+android/
+ios/
+*.log
+*.tsbuildinfo
+.env*
+*.sqlite*
+*.db*
+*.jks
+*.keystore
+local.properties

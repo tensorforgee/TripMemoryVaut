@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "Node16",
+    "moduleResolution": "Node16",
+    "strict": true,
+    "types": [],
+    "rootDir": "src",
+    "outDir": ".expo/step1-tests",
+    "skipLibCheck": true
+  },
+  "include": [
+    "src/domain/**/*.ts",
+    "src/core/database/database.ts",
+    "src/core/database/migrate.ts",
+    "src/core/database/migrations/*.ts",
+    "src/core/database/vault.ts",
+    "src/features/trips/repository.ts",
+    "src/features/trips/presentation.ts"
+  ]
+}

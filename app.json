@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "Trip Memory Vault",
+    "slug": "trip-memory-vault",
+    "version": "0.1.0",
+    "scheme": "tripmemoryvault",
+    "platforms": [
+      "android"
+    ],
+    "android": {
+      "package": "com.tripmemoryvault.app",
+      "allowBackup": false,
+      "blockedPermissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE"
+      ]
+    },
+    "plugins": [
+      "expo-dev-client",
+      "expo-router",
+      "expo-status-bar",
+      "expo-sqlite",
+      "@maplibre/maplibre-react-native"
+    ]
+  }
+}
