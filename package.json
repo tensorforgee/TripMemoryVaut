@@ -9,7 +9,8 @@
     "android": "expo run:android",
     "typecheck": "tsc --noEmit",
     "test:step1": "tsc -p tsconfig.tests.json && node --test tests/step1/*.test.mjs",
-    "test:step2": "tsc -p tsconfig.tests.json && node --test tests/step2/*.test.mjs"
+    "test:step2": "tsc -p tsconfig.tests.json && node --test tests/step2/*.test.mjs",
+    "test:step3": "tsc -p tsconfig.tests.json && node --test tests/step3/*.test.mjs"
   },
   "dependencies": {
     "@maplibre/maplibre-react-native": "11.4.0",

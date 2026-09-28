@@ -118,6 +118,13 @@ export class TripRepository {
         AND EXISTS (SELECT 1 FROM vaults WHERE id = ? AND deleted_at IS NULL)`,
       deleted ? now : null, now, id, this.vaultId, this.vaultId);
       if (result.changes !== 1) throw new TripNotFoundError();
+      if (deleted) {
+        await connection.runAsync(`UPDATE stops SET deleted_at=?,updated_at=?,deleted_by_trip=1
+          WHERE trip_id=? AND vault_id=? AND deleted_at IS NULL`, now, now, id, this.vaultId);
+      } else {
+        await connection.runAsync(`UPDATE stops SET deleted_at=NULL,updated_at=?,deleted_by_trip=0
+          WHERE trip_id=? AND vault_id=? AND deleted_by_trip=1`, now, id, this.vaultId);
+      }
     }));
   }
 }

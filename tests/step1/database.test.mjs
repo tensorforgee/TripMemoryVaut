@@ -11,7 +11,7 @@ import { unknownDates } from '../../.expo/step1-tests/domain/date-spec.js';
 test('initial migration creates only requested tables and is idempotent', async t => {
   const f = await fixture(t);
   const tables = await f.connection.getAllAsync("SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name");
-  assert.deepEqual(tables.map(row => row.name), ['schema_migrations', 'trips', 'vaults']);
+  assert.deepEqual(tables.map(row => row.name), ['places', 'schema_migrations', 'stops', 'trips', 'vaults']);
   assert.equal((await f.connection.getFirstAsync('PRAGMA foreign_keys')).foreign_keys, 1);
   assert.equal((await f.connection.getFirstAsync('PRAGMA journal_mode')).journal_mode, 'wal');
   assert.equal((await f.connection.getFirstAsync('PRAGMA synchronous')).synchronous, 2);
@@ -29,7 +29,7 @@ test('edited, missing, gapped, and newer migration histories fail closed', async
   await assert.rejects(migrateDatabase(f.database, f.services, [{ version: 1, sql: migrations[0].sql + '\n-- edited' }]), /modified/);
   await assert.rejects(migrateDatabase(f.database, f.services, []), /Unsupported/);
   await assert.rejects(migrateDatabase(f.database, f.services, [{ version: 2, sql: '' }]), /contiguous/);
-  await f.connection.execAsync('UPDATE schema_migrations SET version = 2');
+  await f.connection.execAsync('UPDATE schema_migrations SET version = version + 10');
   await assert.rejects(migrateDatabase(f.database, f.services), /Unsupported/);
   assert.equal((await f.trips.getTripById(trip.id)).title, 'Keep me');
   assert.equal(f.backups.length, 1);
@@ -38,7 +38,7 @@ test('edited, missing, gapped, and newer migration histories fail closed', async
 test('failed upgrade restores a SQLite backup including committed WAL data', async t => {
   const f = await fixture(t);
   const trip = await f.trips.createTripDraft({ title: 'Preserved from WAL' });
-  const failed = [...migrations, { version: 2, sql: "UPDATE trips SET title = 'Lost'; CREATE TABLE partial (id TEXT); INSERT INTO does_not_exist VALUES (1);" }];
+  const failed = [...migrations, { version: migrations.length + 1, sql: "UPDATE trips SET title = 'Lost'; CREATE TABLE partial (id TEXT); INSERT INTO does_not_exist VALUES (1);" }];
   await assert.rejects(migrateDatabase(f.database, f.services, failed), error => {
     assert.match(error.message, /snapshot was restored/);
     assert.ok(error.backupPath.endsWith('.sqlite'));
@@ -47,9 +47,9 @@ test('failed upgrade restores a SQLite backup including committed WAL data', asy
   assert.equal(f.backups[1].restored, true);
   assert.equal((await f.trips.getTripById(trip.id)).title, 'Preserved from WAL');
   assert.equal(await f.connection.getFirstAsync("SELECT name FROM sqlite_schema WHERE name = 'partial'"), null);
-  assert.equal((await f.connection.getFirstAsync('SELECT count(*) AS n FROM schema_migrations')).n, 1);
-  await migrateDatabase(f.database, f.services, [...migrations, { version: 2, sql: 'CREATE INDEX trips_title_check ON trips(title);' }]);
-  assert.equal((await f.connection.getFirstAsync('SELECT max(version) AS version FROM schema_migrations')).version, 2);
+  assert.equal((await f.connection.getFirstAsync('SELECT count(*) AS n FROM schema_migrations')).n, migrations.length);
+  await migrateDatabase(f.database, f.services, [...migrations, { version: migrations.length + 1, sql: 'CREATE INDEX trips_title_check ON trips(title);' }]);
+  assert.equal((await f.connection.getFirstAsync('SELECT max(version) AS version FROM schema_migrations')).version, migrations.length + 1);
 });
 
 test('failed first migration preserves the empty database and can be retried', async t => {
@@ -57,7 +57,7 @@ test('failed first migration preserves the empty database and can be retried', a
   await assert.rejects(migrateDatabase(f.database, f.services, [{ version: 1, sql: 'CREATE TABLE partial (id TEXT); INVALID SQL;' }]), /snapshot was restored/);
   assert.equal((await f.connection.getAllAsync("SELECT name FROM sqlite_schema WHERE type = 'table'")).length, 0);
   await migrateDatabase(f.database, f.services);
-  assert.equal((await f.connection.getFirstAsync('SELECT count(*) AS n FROM schema_migrations')).n, 1);
+  assert.equal((await f.connection.getFirstAsync('SELECT count(*) AS n FROM schema_migrations')).n, migrations.length);
 });
 
 test('backup failure prevents migration writes', async t => {
@@ -183,3 +183,4 @@ test('deleted migration ledger rows are detected using SQLite user_version', asy
   await assert.rejects(migrateDatabase(f.database, f.services), /history disagree/);
   assert.equal((await f.connection.getFirstAsync('SELECT count(*) AS n FROM vaults')).n, 1);
 });
+

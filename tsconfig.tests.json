@@ -16,6 +16,8 @@
     "src/core/database/migrations/*.ts",
     "src/core/database/vault.ts",
     "src/features/trips/repository.ts",
-    "src/features/trips/presentation.ts"
+    "src/features/trips/presentation.ts",
+    "src/features/route/repository.ts",
+    "src/features/route/forms.ts"
   ]
 }

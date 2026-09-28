@@ -30,6 +30,7 @@ export default function RootLayout() {
       <Stack.Screen name="trips/trash" options={{ title: 'Trash', header: tripHeader }} />
       <Stack.Screen name="trips/[tripId]/index" options={{ title: 'Trip', header: tripHeader }} />
       <Stack.Screen name="trips/[tripId]/edit" options={{ title: 'Edit trip', header: tripHeader }} />
+      <Stack.Screen name="trips/[tripId]/route" options={{ title: 'Route / Stops', header: tripHeader }} />
       <Stack.Screen name="map-test" options={{ title: 'MapLibre compatibility' }} />
     </Stack>
   );

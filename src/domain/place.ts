@@ -21,9 +21,9 @@ export function parsePlaceFields(input: unknown): PlaceFields {
   const value = record(input, 'place');
   keys(value, ['name', 'latitude', 'longitude', 'coordinatePrecision', 'source', 'provenance', 'aliases'], 'place');
   const coordinates = parseCoordinates(value.latitude, value.longitude);
-  if (!['unknown', 'point', 'area'].includes(String(value.coordinatePrecision))) throw new ValidationError('place.coordinatePrecision', 'is invalid');
+  if (typeof value.coordinatePrecision !== 'string' || !['unknown', 'point', 'area'].includes(value.coordinatePrecision)) throw new ValidationError('place.coordinatePrecision', 'is invalid');
   if (coordinates.latitude === null && value.coordinatePrecision !== 'unknown') throw new ValidationError('place.coordinatePrecision', 'must be unknown without coordinates');
-  if (!['user', 'exif', 'provider', 'import'].includes(String(value.source))) throw new ValidationError('place.source', 'is invalid');
+  if (typeof value.source !== 'string' || !['user', 'exif', 'provider', 'import'].includes(value.source)) throw new ValidationError('place.source', 'is invalid');
   const provenance = record(value.provenance, 'place.provenance');
   keys(provenance, ['note'], 'place.provenance');
   if (!Array.isArray(value.aliases)) throw new ValidationError('place.aliases', 'must be a list');

@@ -22,7 +22,7 @@ export async function verifyNativeFoundation(): Promise<string[]> {
       wal: await connection.getFirstAsync<{ journal_mode: string }>('PRAGMA journal_mode'),
       sync: await connection.getFirstAsync<{ synchronous: number }>('PRAGMA synchronous'),
     }));
-    verify('Only vaults, trips and schema_migrations', state.tables.map(row => row.name).join(',') === 'schema_migrations,trips,vaults');
+    verify('Only the implemented domain tables and migration ledger', state.tables.map(row => row.name).join(',') === 'places,schema_migrations,stops,trips,vaults');
     verify('Foreign keys, WAL and FULL durability', state.fk?.foreign_keys === 1 && state.wal?.journal_mode === 'wal' && state.sync?.synchronous === 2);
     const trip = await store.trips.createTripDraft({ title: 'Synthetic Step 1 verification' });
     verify('UUID draft with unknown dates', trip.id !== store.vault.id && JSON.stringify(trip.dates) === JSON.stringify(unknownDates()));
@@ -45,7 +45,7 @@ export async function verifyNativeFoundation(): Promise<string[]> {
     let recovered = false;
     try {
       await migrateDatabase(store.database, services, [...migrations, {
-        version: 2, sql: "UPDATE trips SET title = 'Must roll back'; CREATE TABLE partial_step1 (id TEXT); INSERT INTO missing_step1 VALUES (1);",
+        version: migrations.length + 1, sql: "UPDATE trips SET title = 'Must roll back'; CREATE TABLE partial_step1 (id TEXT); INSERT INTO missing_step1 VALUES (1);",
       }]);
     } catch (error) { recovered = error instanceof MigrationError && error.message.includes('snapshot was restored') && !!error.backupPath; }
     const partial = await store.database.run(connection => connection.getFirstAsync("SELECT name FROM sqlite_schema WHERE name = 'partial_step1'"));
@@ -60,3 +60,4 @@ export async function verifyNativeFoundation(): Promise<string[]> {
     return results;
   } finally { await store.close(); }
 }
+
