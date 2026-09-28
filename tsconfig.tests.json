@@ -18,6 +18,8 @@
     "src/features/trips/repository.ts",
     "src/features/trips/presentation.ts",
     "src/features/route/repository.ts",
-    "src/features/route/forms.ts"
+    "src/features/route/forms.ts",
+    "src/features/timeline/repository.ts",
+    "src/features/timeline/presentation.ts"
   ]
 }
