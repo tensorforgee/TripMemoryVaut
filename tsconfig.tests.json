@@ -25,6 +25,6 @@
     "src/features/media/repository.ts",
     "src/services/import/pipeline.ts",
     "src/core/media/files.ts", "src/features/reconstruction/repository.ts", "src/services/reconstruction/*.ts",
-    "src/features/companions/repository.ts", "src/features/chapters/repository.ts"
+    "src/features/companions/repository.ts", "src/features/chapters/repository.ts", "src/features/life/repository.ts"
   ]
 }
