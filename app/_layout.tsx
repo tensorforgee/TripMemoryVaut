@@ -4,6 +4,7 @@ import { Pressable, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { openVaultDatabase } from '../src/core/database/open';
 import { MigrationError } from '../src/core/database/migrate';
+import { mediaService } from '../src/features/media/service';
 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
@@ -13,7 +14,7 @@ export default function RootLayout() {
     // The shared connection lives for the app process. Screens open only after
     // migrations and vault initialization succeed; failure never resets data.
     openVaultDatabase().then(
-      () => { if (active) setReady(true); },
+      () => { if (active) setReady(true); void mediaService().then(s=>s.run()).catch(()=>{ /* persisted jobs expose recoverable failures in Photos */ }); },
       (failure: unknown) => { if (active) setError(failure instanceof Error ? failure : new Error(String(failure))); },
     );
     return () => { active = false; };
@@ -32,6 +33,8 @@ export default function RootLayout() {
       <Stack.Screen name="trips/[tripId]/edit" options={{ title: 'Edit trip', header: tripHeader }} />
       <Stack.Screen name="trips/[tripId]/route" options={{ title: 'Route / Stops', header: tripHeader }} />
       <Stack.Screen name="trips/[tripId]/timeline" options={{ title: 'Timeline', header: tripHeader }} />
+      <Stack.Screen name="trips/[tripId]/photos" options={{ title: 'Photos', header: tripHeader }} />
+      <Stack.Screen name="media-test" options={{ title: 'Media verification', header: tripHeader }} />
       <Stack.Screen name="map-test" options={{ title: 'MapLibre compatibility' }} />
     </Stack>
   );

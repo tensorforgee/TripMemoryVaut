@@ -20,6 +20,9 @@
     "src/features/route/repository.ts",
     "src/features/route/forms.ts",
     "src/features/timeline/repository.ts",
-    "src/features/timeline/presentation.ts"
+    "src/features/timeline/presentation.ts",
+    "src/features/media/repository.ts",
+    "src/services/import/pipeline.ts",
+    "src/core/media/files.ts"
   ]
 }

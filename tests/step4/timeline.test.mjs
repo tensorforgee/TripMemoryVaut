@@ -38,7 +38,7 @@ test('v2 migration preserves existing Stop bytes, tombstones, Places and trips; 
   assert.deepEqual(await f.connection.getAllAsync('SELECT * FROM places'),places);
   assert.deepEqual(await trips.getTripById(trip.id),trip);
   assert.deepEqual((await f.connection.getAllAsync('SELECT * FROM schema_migrations ORDER BY version')).slice(0,2),ledger);
-  assert.equal((await f.connection.getFirstAsync('PRAGMA user_version')).user_version,3);
+  assert.equal((await f.connection.getFirstAsync('PRAGMA user_version')).user_version,migrations.length);
   await migrateDatabase(f.database,f.services); assert.equal(f.backups.length,2);
   assert.deepEqual(await f.connection.getAllAsync('PRAGMA foreign_key_check'),[]);
   assert.ok((await f.connection.getAllAsync('PRAGMA foreign_key_list(stops)')).some(row => row.table === 'trip_days' && row.from === 'day_id'));

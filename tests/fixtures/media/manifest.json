@@ -1,0 +1,61 @@
+{
+  "plain.jpg": {
+    "sha256": "fad98546be2bb5a3a5549c2e6e0d2656d02b83c1c9bd3033b6843bd44d2d186b",
+    "byteSize": 744,
+    "mimeType": "image/jpeg",
+    "extension": "jpg",
+    "width": 96,
+    "height": 64,
+    "sourceMetadata": {
+      "exif": {},
+      "capture": null,
+      "gps": null,
+      "warnings": []
+    },
+    "parserVersion": 1
+  },
+  "transparent.png": {
+    "sha256": "78a142d9b15903ad9ceb777925097f201e0a630d42246b13b9016392336661c8",
+    "byteSize": 301,
+    "mimeType": "image/png",
+    "extension": "png",
+    "width": 64,
+    "height": 32,
+    "sourceMetadata": {
+      "exif": {},
+      "capture": null,
+      "gps": null,
+      "warnings": []
+    },
+    "parserVersion": 1
+  },
+  "capture-gps.jpg": {
+    "sha256": "5911089375d1d107b7e075120a44d95a8bdf6816ee840a659b5f93fb6071e9fe",
+    "byteSize": 963,
+    "mimeType": "image/jpeg",
+    "extension": "jpg",
+    "width": 64,
+    "height": 96,
+    "sourceMetadata": {
+      "exif": {
+        "DateTimeOriginal": "2001:02:03 04:05:06",
+        "OffsetTimeOriginal": "+05:30",
+        "Orientation": "6"
+      },
+      "capture": {
+        "local": "2001-02-03T04:05:06",
+        "utc": "2001-02-02T22:35:06Z",
+        "offset_minutes": 330,
+        "precision": "second",
+        "source": "exif",
+        "warnings": []
+      },
+      "gps": {
+        "latitude": 12.5,
+        "longitude": 77.5
+      },
+      "warnings": []
+    },
+    "parserVersion": 1
+  }
+}

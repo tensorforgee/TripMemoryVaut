@@ -28,7 +28,7 @@ test('version 1 upgrades without changing trip/vault data and is idempotent', as
   assert.deepEqual(await trips.getTripById(trip.id), trip);
   assert.equal((await getOrCreateVault(f.database, randomUUID)).id, vault.id);
   assert.deepEqual((await f.connection.getAllAsync('SELECT * FROM schema_migrations ORDER BY version'))[0], ledger[0]);
-  assert.deepEqual((await f.connection.getAllAsync("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name")).map(r => r.name), ['places', 'schema_migrations', 'stops', 'trip_days', 'trips', 'vaults']);
+  assert.deepEqual((await f.connection.getAllAsync("SELECT name FROM sqlite_schema WHERE type='table' ORDER BY name")).map(r => r.name), ['import_batches', 'import_items', 'local_media_files', 'media', 'places', 'schema_migrations', 'stops', 'trip_days', 'trip_media', 'trips', 'vaults']);
   assert.equal((await f.connection.getFirstAsync('SELECT order_revision FROM trips')).order_revision, 0);
   await migrateDatabase(f.database, f.services);
   assert.equal(f.backups.length, 2);
