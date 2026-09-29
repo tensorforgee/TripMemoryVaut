@@ -18,6 +18,8 @@ export default function TripsScreen() {
     <SectionList contentContainerStyle={styles.content} sections={tripSections(result.data ?? [])} keyExtractor={trip => trip.id}
       ListHeaderComponent={<View style={{ gap: 12 }}><Text style={styles.heading}>Your trips</Text>
         <Action title="Create trip" onPress={() => router.push('/trips/new')} />
+        <View style={{ flexDirection: 'row', gap: 8 }}><View style={{ flex: 1 }}><Action title="Companions" onPress={() => router.push('/companions')} /></View>
+          <View style={{ flex: 1 }}><Action title="Life Chapters" onPress={() => router.push('/chapters')} /></View></View>
         <Action title="Trash" onPress={() => router.push('/trips/trash')} />
         {result.error ? <Problem error={result.error} retry={result.retry} /> : !result.data ? <Text>Loading trips…</Text> : null}
       </View>}

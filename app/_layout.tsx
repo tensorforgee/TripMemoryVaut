@@ -36,6 +36,10 @@ export default function RootLayout() {
       <Stack.Screen name="trips/[tripId]/timeline" options={{ title: 'Timeline', header: tripHeader }} />
       <Stack.Screen name="trips/[tripId]/photos" options={{ title: 'Photos', header: tripHeader }} />
       <Stack.Screen name="trips/[tripId]/reconstruct" options={{ title: 'Reconstruction', header: tripHeader }} />
+      <Stack.Screen name="companions/index" options={{ title: 'Companions', header: tripHeader }} />
+      <Stack.Screen name="companions/[companionId]" options={{ title: 'Companion', header: tripHeader }} />
+      <Stack.Screen name="chapters/index" options={{ title: 'Life Chapters', header: tripHeader }} />
+      <Stack.Screen name="chapters/[chapterId]" options={{ title: 'Life Chapter', header: tripHeader }} />
       <Stack.Screen name="reconstruction-test" options={{ title: 'Reconstruction verification', header: tripHeader }} />
       <Stack.Screen name="media-test" options={{ title: 'Media verification', header: tripHeader }} />
       <Stack.Screen name="map-test" options={{ title: 'MapLibre compatibility' }} />
