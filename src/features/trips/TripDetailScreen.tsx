@@ -29,6 +29,7 @@ export default function TripDetailScreen() {
       <RouteSection tripId={trip.id} />
       <TimelineSection tripId={trip.id} />
       <PhotosSection tripId={trip.id} />
+      <Action title="Reconstruct from photos" onPress={() => router.push(`/trips/${trip.id}/reconstruct`)} />
       <Action title="Edit trip" disabled={busy} onPress={() => router.push(`/trips/${trip.id}/edit`)} />
       <Action title="Delete trip" disabled={busy} onPress={() => Alert.alert(`Delete “${trip.title}”?`, 'This trip will move to Trash. You can restore it there.', [
         { text: 'Cancel', style: 'cancel' }, { text: 'Move to Trash', style: 'destructive', onPress: () => { void remove(); } },

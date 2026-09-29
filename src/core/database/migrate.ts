@@ -4,9 +4,11 @@ import { placesStopsSchema } from './migrations/0002-places-stops';
 import { tripDaysSchema } from './migrations/0003-trip-days';
 import { mediaSchema } from './migrations/0004-media';
 import { mediaGuardsSchema } from './migrations/0005-media-guards';
+import { reconstructionSchema } from './migrations/0006-reconstruction';
+import { reconstructionProvenanceSchema } from './migrations/0007-reconstruction-provenance';
 
 export type Migration = { readonly version: number; readonly sql: string };
-export const migrations: readonly Migration[] = [{ version: 1, sql: initialSchema }, { version: 2, sql: placesStopsSchema }, { version: 3, sql: tripDaysSchema }, { version: 4, sql: mediaSchema }, { version: 5, sql: mediaGuardsSchema }];
+export const migrations: readonly Migration[] = [{ version: 1, sql: initialSchema }, { version: 2, sql: placesStopsSchema }, { version: 3, sql: tripDaysSchema }, { version: 4, sql: mediaSchema }, { version: 5, sql: mediaGuardsSchema }, { version: 6, sql: reconstructionSchema }, { version: 7, sql: reconstructionProvenanceSchema }];
 
 export interface MigrationBackup {
   path: string;
