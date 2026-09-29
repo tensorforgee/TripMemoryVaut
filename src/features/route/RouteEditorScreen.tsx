@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useLocalSearchParams, useNavigation } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
 import { Alert, FlatList, ScrollView, Switch, Text, TextInput, View } from 'react-native';
@@ -156,10 +156,16 @@ function StopEditor({ tripId, stop, close }: { tripId: string; stop?: RouteStop;
 }
 
 export default function RouteEditorScreen() {
-  const { tripId } = useLocalSearchParams<{ tripId: string }>();
+  const { tripId, editPlaceId } = useLocalSearchParams<{ tripId: string; editPlaceId?: string }>();
   const query = useCallback((repo: RouteRepository) => repo.getRoute(tripId), [tripId]);
   const route = useRouteQuery(query);
   const [panel, setPanel] = useState<{ type: 'stop'; stop?: RouteStop } | { type: 'place'; place: Place }>();
+  const openedPlace = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!editPlaceId || openedPlace.current === editPlaceId || route.error) return;
+    const place = route.data?.stops.find(s => s.placeId === editPlaceId)?.place;
+    if (place) { openedPlace.current = editPlaceId; setPanel({ type: 'place', place }); }
+  }, [editPlaceId, route.data, route.error]);
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
   const [error, setError] = useState('');

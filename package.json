@@ -13,6 +13,7 @@
     "test:step3": "tsc -p tsconfig.tests.json && node --test tests/step3/*.test.mjs",
     "test:step4": "tsc -p tsconfig.tests.json && node --test tests/step4/*.test.mjs",
     "test:step6": "tsc -p tsconfig.tests.json && node --test tests/step6/*.test.mjs",
+    "test:step7": "tsc -p tsconfig.tests.json && node --test tests/step7/*.test.mjs",
     "test:step5": "tsc -p tsconfig.tests.json && node --test tests/step5/*.test.mjs"
   },
   "dependencies": {
