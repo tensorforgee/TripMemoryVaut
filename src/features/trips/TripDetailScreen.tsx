@@ -27,6 +27,7 @@ export default function TripDetailScreen() {
       <Text style={styles.text}>{trip.isFavourite ? '★ Favourite' : 'Not a favourite'} · {trip.status === 'draft' ? 'Draft' : 'Saved'}</Text>
       <Text style={styles.text}>{trip.summary || 'No summary yet.'}</Text>
       <RouteSection tripId={trip.id} />
+      <Action title="Trip Map" onPress={() => router.push(`/trips/${trip.id}/map`)} />
       <TimelineSection tripId={trip.id} />
       <PhotosSection tripId={trip.id} />
       <Action title="Reconstruct from photos" onPress={() => router.push(`/trips/${trip.id}/reconstruct`)} />

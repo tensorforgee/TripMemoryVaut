@@ -32,12 +32,14 @@ export default function RootLayout() {
       <Stack.Screen name="trips/[tripId]/index" options={{ title: 'Trip', header: tripHeader }} />
       <Stack.Screen name="trips/[tripId]/edit" options={{ title: 'Edit trip', header: tripHeader }} />
       <Stack.Screen name="trips/[tripId]/route" options={{ title: 'Route / Stops', header: tripHeader }} />
+      <Stack.Screen name="trips/[tripId]/map" options={{ title: 'Trip Map', header: tripHeader }} />
       <Stack.Screen name="trips/[tripId]/timeline" options={{ title: 'Timeline', header: tripHeader }} />
       <Stack.Screen name="trips/[tripId]/photos" options={{ title: 'Photos', header: tripHeader }} />
       <Stack.Screen name="trips/[tripId]/reconstruct" options={{ title: 'Reconstruction', header: tripHeader }} />
       <Stack.Screen name="reconstruction-test" options={{ title: 'Reconstruction verification', header: tripHeader }} />
       <Stack.Screen name="media-test" options={{ title: 'Media verification', header: tripHeader }} />
       <Stack.Screen name="map-test" options={{ title: 'MapLibre compatibility' }} />
+      <Stack.Screen name="trip-map-test" options={{ title: 'Trip Map verification', header: tripHeader }} />
     </Stack>
   );
 }
