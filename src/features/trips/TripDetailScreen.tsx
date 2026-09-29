@@ -7,6 +7,7 @@ import { dateLabel } from './presentation';
 import { Action, Problem, message, styles, useTripQuery } from './ui';
 import RouteSection from '../route/RouteSection';
 import TimelineSection from '../timeline/TimelineSection';
+import PhotosSection from '../media/PhotosSection';
 
 export default function TripDetailScreen() {
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
@@ -27,6 +28,7 @@ export default function TripDetailScreen() {
       <Text style={styles.text}>{trip.summary || 'No summary yet.'}</Text>
       <RouteSection tripId={trip.id} />
       <TimelineSection tripId={trip.id} />
+      <PhotosSection tripId={trip.id} />
       <Action title="Edit trip" disabled={busy} onPress={() => router.push(`/trips/${trip.id}/edit`)} />
       <Action title="Delete trip" disabled={busy} onPress={() => Alert.alert(`Delete “${trip.title}”?`, 'This trip will move to Trash. You can restore it there.', [
         { text: 'Cancel', style: 'cancel' }, { text: 'Move to Trash', style: 'destructive', onPress: () => { void remove(); } },

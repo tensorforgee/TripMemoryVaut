@@ -22,7 +22,7 @@ export async function verifyNativeFoundation(): Promise<string[]> {
       wal: await connection.getFirstAsync<{ journal_mode: string }>('PRAGMA journal_mode'),
       sync: await connection.getFirstAsync<{ synchronous: number }>('PRAGMA synchronous'),
     }));
-    verify('Only the implemented domain tables and migration ledger', state.tables.map(row => row.name).join(',') === 'places,schema_migrations,stops,trip_days,trips,vaults');
+    verify('Only the implemented domain tables and migration ledger', state.tables.map(row => row.name).join(',') === 'import_batches,import_items,local_media_files,media,places,schema_migrations,stops,trip_days,trip_media,trips,vaults');
     verify('Foreign keys, WAL and FULL durability', state.fk?.foreign_keys === 1 && state.wal?.journal_mode === 'wal' && state.sync?.synchronous === 2);
     const trip = await store.trips.createTripDraft({ title: 'Synthetic Step 1 verification' });
     verify('UUID draft with unknown dates', trip.id !== store.vault.id && JSON.stringify(trip.dates) === JSON.stringify(unknownDates()));

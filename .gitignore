@@ -2,8 +2,11 @@ node_modules/
 .pnpm/
 .expo/
 dist/
-android/
-ios/
+/android/
+/ios/
+modules/**/build/
+modules/**/.gradle/
+modules/**/.cxx/
 *.log
 *.tsbuildinfo
 .env*

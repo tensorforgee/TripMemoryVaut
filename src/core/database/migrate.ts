@@ -2,9 +2,11 @@ import { inTransaction, type LocalDatabase, type SqlConnection } from './databas
 import { initialSchema } from './migrations/0001-vault-trips';
 import { placesStopsSchema } from './migrations/0002-places-stops';
 import { tripDaysSchema } from './migrations/0003-trip-days';
+import { mediaSchema } from './migrations/0004-media';
+import { mediaGuardsSchema } from './migrations/0005-media-guards';
 
 export type Migration = { readonly version: number; readonly sql: string };
-export const migrations: readonly Migration[] = [{ version: 1, sql: initialSchema }, { version: 2, sql: placesStopsSchema }, { version: 3, sql: tripDaysSchema }];
+export const migrations: readonly Migration[] = [{ version: 1, sql: initialSchema }, { version: 2, sql: placesStopsSchema }, { version: 3, sql: tripDaysSchema }, { version: 4, sql: mediaSchema }, { version: 5, sql: mediaGuardsSchema }];
 
 export interface MigrationBackup {
   path: string;
