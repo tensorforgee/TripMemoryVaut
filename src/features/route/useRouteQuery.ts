@@ -13,6 +13,7 @@ export function useRouteQuery<T>(query: (repository: RouteRepository) => Promise
     let generation = 0;
     let unsubscribe: (() => void) | undefined;
     let unsubscribeTrips: (() => void) | undefined;
+    let unsubscribeTimeline: (() => void) | undefined;
     openVaultDatabase().then(vault => {
       if (!active) return;
       const read = async () => {
@@ -22,9 +23,10 @@ export function useRouteQuery<T>(query: (repository: RouteRepository) => Promise
       };
       unsubscribe = vault.routes.subscribe(() => { void read(); });
       unsubscribeTrips = vault.trips.subscribe(() => { void read(); });
+      unsubscribeTimeline = vault.timeline.subscribe(() => { void read(); });
       void read();
     }).catch(e => { if (active) setError(message(e)); });
-    return () => { active = false; unsubscribe?.(); unsubscribeTrips?.(); };
+    return () => { active = false; unsubscribe?.(); unsubscribeTrips?.(); unsubscribeTimeline?.(); };
   }, [query, version]));
   return { data, error, retry: () => setVersion(v => v + 1) };
 }

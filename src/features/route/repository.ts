@@ -6,7 +6,7 @@ import { keys, record, utcTimestamp, uuid } from '../../domain/validation';
 type PlaceRow = { id: string; vault_id: string; name: string; latitude: number | null; longitude: number | null;
   coordinate_precision: string; source: string; provenance_json: string; aliases_json: string;
   created_at: string; updated_at: string; deleted_at: string | null };
-type StopRow = { id: string; vault_id: string; trip_id: string; place_id: string; position: number;
+type StopRow = { id: string; vault_id: string; trip_id: string; place_id: string; day_id: string | null; position: number;
   kind: string; visit_confirmed: number; detail_certainty: string; source: string; dates_json: string | null;
   note: string | null; lodging_label: string | null; checkout_dates_json: string | null;
   created_at: string; updated_at: string; deleted_at: string | null; place_json: string };
@@ -24,7 +24,7 @@ function stopFromRow(row: StopRow): RouteStop {
   return { ...parseStopFields({ placeId: row.place_id, kind: row.kind, visitConfirmed: row.visit_confirmed === 1,
     detailCertainty: row.detail_certainty, source: row.source, dates: row.dates_json === null ? null : JSON.parse(row.dates_json),
     note: row.note, lodgingLabel: row.lodging_label, checkoutDates: row.checkout_dates_json === null ? null : JSON.parse(row.checkout_dates_json) }),
-    id: uuid(row.id, 'stop.id'), vaultId: uuid(row.vault_id, 'vaultId'), tripId: uuid(row.trip_id, 'tripId'), position: orderedPosition(row.position),
+    id: uuid(row.id, 'stop.id'), vaultId: uuid(row.vault_id, 'vaultId'), tripId: uuid(row.trip_id, 'tripId'), dayId: row.day_id === null ? null : uuid(row.day_id, 'dayId'), position: orderedPosition(row.position),
     createdAt: utcTimestamp(row.created_at, 'createdAt'), updatedAt: utcTimestamp(row.updated_at, 'updatedAt'),
     deletedAt: row.deleted_at === null ? null : utcTimestamp(row.deleted_at, 'deletedAt'), place: placeFromRow(JSON.parse(row.place_json)) };
 }
@@ -149,7 +149,7 @@ export class RouteRepository {
       const current = await this.readStop(connection, tripId, id);
       const value = record(patch, 'stop');
       keys(value, ['placeId','kind','visitConfirmed','detailCertainty','source','dates','note','lodgingLabel','checkoutDates'], 'stop');
-      const { id: _id, vaultId: _vault, tripId: _trip, position: _position, createdAt: _created, updatedAt: _updated, deletedAt: _deleted, place: _place, ...before } = current;
+      const { id: _id, vaultId: _vault, tripId: _trip, dayId: _day, position: _position, createdAt: _created, updatedAt: _updated, deletedAt: _deleted, place: _place, ...before } = current;
       const fields = parseStopFields({ ...before, ...value });
       if (!await this.readPlace(connection, fields.placeId)) throw new Error('Place unavailable in this vault');
       await connection.runAsync(`UPDATE stops SET place_id=?,kind=?,visit_confirmed=?,detail_certainty=?,source=?,dates_json=?,note=?,lodging_label=?,checkout_dates_json=?,updated_at=?

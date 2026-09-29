@@ -6,7 +6,7 @@ export type StopFields = {
   detailCertainty: 'exact' | 'approximate' | 'unknown'; source: 'user' | 'photo_suggestion' | 'import';
   dates: DateSpec | null; note: string | null; lodgingLabel: string | null; checkoutDates: DateSpec | null;
 };
-export type Stop = StopFields & { id: string; vaultId: string; tripId: string; position: number; createdAt: string; updatedAt: string; deletedAt: string | null };
+export type Stop = StopFields & { id: string; vaultId: string; tripId: string; dayId: string | null; position: number; createdAt: string; updatedAt: string; deletedAt: string | null };
 export type CreateStop = Pick<StopFields, 'placeId'> & Partial<Omit<StopFields, 'placeId'>>;
 export function orderedPosition(value: unknown): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) throw new ValidationError('position', 'must be a nonnegative safe integer');

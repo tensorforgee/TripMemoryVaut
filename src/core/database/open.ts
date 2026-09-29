@@ -5,6 +5,7 @@ import { migrateDatabase, type MigrationServices } from './migrate';
 import { getOrCreateVault, type Vault } from './vault';
 import { TripRepository } from '../../features/trips/repository';
 import { RouteRepository } from '../../features/route/repository';
+import { TimelineRepository } from '../../features/timeline/repository';
 
 // One persistent connection per open vault, configured before migrations or queries.
 // A rejected initialization must be shown as recovery/error, never an empty vault.
@@ -35,6 +36,7 @@ export type VaultDatabase = {
   vault: Vault;
   trips: TripRepository;
   routes: RouteRepository;
+  timeline: TimelineRepository;
   close(): Promise<void>;
 };
 
@@ -60,6 +62,7 @@ async function initialize(databaseName: string): Promise<VaultDatabase> {
     const vault = await getOrCreateVault(database, randomUUID);
     return {
       database, vault, trips: new TripRepository(database, vault.id, randomUUID), routes: new RouteRepository(database, vault.id, randomUUID),
+      timeline: new TimelineRepository(database, vault.id, randomUUID),
       close: async () => { await database.close(); opened.delete(databaseName); },
     };
   } catch (error) {
