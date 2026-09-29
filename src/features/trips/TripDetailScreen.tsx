@@ -8,6 +8,7 @@ import { Action, Problem, message, styles, useTripQuery } from './ui';
 import RouteSection from '../route/RouteSection';
 import TimelineSection from '../timeline/TimelineSection';
 import PhotosSection from '../media/PhotosSection';
+import TripOrganizationSections from '../organization/TripOrganizationSections';
 
 export default function TripDetailScreen() {
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
@@ -30,6 +31,7 @@ export default function TripDetailScreen() {
       <Action title="Trip Map" onPress={() => router.push(`/trips/${trip.id}/map`)} />
       <TimelineSection tripId={trip.id} />
       <PhotosSection tripId={trip.id} />
+      <TripOrganizationSections tripId={trip.id} />
       <Action title="Reconstruct from photos" onPress={() => router.push(`/trips/${trip.id}/reconstruct`)} />
       <Action title="Edit trip" disabled={busy} onPress={() => router.push(`/trips/${trip.id}/edit`)} />
       <Action title="Delete trip" disabled={busy} onPress={() => Alert.alert(`Delete “${trip.title}”?`, 'This trip will move to Trash. You can restore it there.', [

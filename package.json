@@ -14,7 +14,8 @@
     "test:step4": "tsc -p tsconfig.tests.json && node --test tests/step4/*.test.mjs",
     "test:step6": "tsc -p tsconfig.tests.json && node --test tests/step6/*.test.mjs",
     "test:step7": "tsc -p tsconfig.tests.json && node --test tests/step7/*.test.mjs",
-    "test:step5": "tsc -p tsconfig.tests.json && node --test tests/step5/*.test.mjs"
+    "test:step5": "tsc -p tsconfig.tests.json && node --test tests/step5/*.test.mjs",
+    "test:step8": "tsc -p tsconfig.tests.json && node --test tests/step8/*.test.mjs"
   },
   "dependencies": {
     "@maplibre/maplibre-react-native": "11.4.0",
