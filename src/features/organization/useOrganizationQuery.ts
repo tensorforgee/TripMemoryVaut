@@ -12,7 +12,8 @@ export function useOrganizationQuery<T>(query: (vault: VaultDatabase) => Promise
       const read = async () => { const request = ++generation; try { const value = await query(vault);
         if (active && request === generation) { setData(value); setError(''); }
       } catch (failure) { if (active && request === generation) setError(message(failure)); } };
-      subscriptions = [vault.companions.subscribe(() => { void read(); }), vault.chapters.subscribe(() => { void read(); }), vault.trips.subscribe(() => { void read(); })];
+      subscriptions = [vault.companions.subscribe(() => { void read(); }), vault.chapters.subscribe(() => { void read(); }),
+        vault.trips.subscribe(() => { void read(); }), vault.dreams.subscribe(() => { void read(); })];
       void read();
     }).catch(failure => { if (active) setError(message(failure)); });
     return () => { active = false; subscriptions.forEach(unsubscribe => unsubscribe()); };
