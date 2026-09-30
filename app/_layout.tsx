@@ -42,12 +42,14 @@ export default function RootLayout() {
       <Stack.Screen name="chapters/[chapterId]" options={{ title: 'Life Chapter', header: tripHeader }} />
       <Stack.Screen name="life/index" options={{ title: 'My Travel Life', header: tripHeader }} />
       <Stack.Screen name="life/places" options={{ title: 'Places visited', header: tripHeader }} />
+      <Stack.Screen name="map" options={{ title: 'My Map', header: tripHeader }} />
       <Stack.Screen name="dreams/index" options={{ title: 'Dream Places', header: tripHeader }} />
       <Stack.Screen name="dreams/[dreamId]" options={{ title: 'Dream', header: tripHeader }} />
       <Stack.Screen name="reconstruction-test" options={{ title: 'Reconstruction verification', header: tripHeader }} />
       <Stack.Screen name="media-test" options={{ title: 'Media verification', header: tripHeader }} />
       <Stack.Screen name="map-test" options={{ title: 'MapLibre compatibility' }} />
       <Stack.Screen name="trip-map-test" options={{ title: 'Trip Map verification', header: tripHeader }} />
+      <Stack.Screen name="my-map-test" options={{ title: 'My Map verification', header: tripHeader }} />
     </Stack>
   );
 }

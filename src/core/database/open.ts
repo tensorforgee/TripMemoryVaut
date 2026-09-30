@@ -10,6 +10,7 @@ import { CompanionRepository } from '../../features/companions/repository';
 import { ChapterRepository } from '../../features/chapters/repository';
 import { TravelLifeRepository } from '../../features/life/repository';
 import { DreamRepository } from '../../features/dreams/repository';
+import { GlobalMapRepository } from '../../features/map/repository';
 
 // One persistent connection per open vault, configured before migrations or queries.
 // A rejected initialization must be shown as recovery/error, never an empty vault.
@@ -45,6 +46,7 @@ export type VaultDatabase = {
   chapters: ChapterRepository;
   life: TravelLifeRepository;
   dreams: DreamRepository;
+  map: GlobalMapRepository;
   close(): Promise<void>;
 };
 
@@ -74,6 +76,7 @@ async function initialize(databaseName: string): Promise<VaultDatabase> {
       companions: new CompanionRepository(database, vault.id, randomUUID), chapters: new ChapterRepository(database, vault.id, randomUUID),
       life: new TravelLifeRepository(database, vault.id),
       dreams: new DreamRepository(database, vault.id, randomUUID),
+      map: new GlobalMapRepository(database, vault.id),
       close: async () => { await database.close(); opened.delete(databaseName); },
     };
   } catch (error) {

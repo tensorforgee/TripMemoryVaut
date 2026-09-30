@@ -6,12 +6,16 @@ type SequenceLine = { type: 'Feature'; id: string;
   properties: { fromStopId: string; toStopId: string; kind: 'trip_sequence' };
   geometry: { type: 'LineString'; coordinates: Coordinate[] } };
 
-export function confirmedCoordinate(stop: RouteStop): Coordinate | null {
-  const { latitude: lat, longitude: lon } = stop.place;
-  if (!stop.visitConfirmed || typeof lat !== 'number' || typeof lon !== 'number'
+export function canonicalCoordinate(lat: number | null | undefined, lon: number | null | undefined): Coordinate | null {
+  if (typeof lat !== 'number' || typeof lon !== 'number'
     || !Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180
     || (lat === 0 && lon === 0)) return null;
   return [lon, lat];
+}
+
+export function confirmedCoordinate(stop: RouteStop): Coordinate | null {
+  if (!stop.visitConfirmed) return null;
+  return canonicalCoordinate(stop.place.latitude, stop.place.longitude);
 }
 
 // Only the canonical repository supplies this view. Suggestions are never inputs.
