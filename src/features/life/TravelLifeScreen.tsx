@@ -65,6 +65,7 @@ export default function TravelLifeScreen() {
       <Text style={styles.heading}>Travel Life</Text>
       <Text style={styles.text}>A view of your confirmed archive so far. Saved Trips and confirmed visits only; drafts and Trash stay out.</Text>
       {result.error ? <Problem error={result.error} retry={result.retry} /> : result.data ? <Overview value={result.data} /> : <Text>Reading your local archive…</Text>}
+      <Action title="Open My Map" onPress={() => router.push('/map')} />
       <Action title="Browse Places" onPress={() => router.push('/life/places')} />
     </ScrollView>
   </SafeAreaView>;

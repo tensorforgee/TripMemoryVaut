@@ -20,6 +20,7 @@
     "src/features/route/repository.ts",
     "src/features/route/forms.ts",
     "src/features/map/model.ts",
+    "src/features/map/repository.ts",
     "src/features/timeline/repository.ts",
     "src/features/timeline/presentation.ts",
     "src/features/media/repository.ts",
