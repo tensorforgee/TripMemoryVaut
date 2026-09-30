@@ -19,6 +19,7 @@ export default function TripsScreen() {
       ListHeaderComponent={<View style={{ gap: 12 }}><Text style={styles.heading}>Your trips</Text>
         <Action title="Create trip" onPress={() => router.push('/trips/new')} />
         <Action title="My Travel Life" onPress={() => router.push('/life')} />
+        <Action title="Dream Places" onPress={() => router.push('/dreams')} />
         <View style={{ flexDirection: 'row', gap: 8 }}><View style={{ flex: 1 }}><Action title="Companions" onPress={() => router.push('/companions')} /></View>
           <View style={{ flex: 1 }}><Action title="Life Chapters" onPress={() => router.push('/chapters')} /></View></View>
         <Action title="Trash" onPress={() => router.push('/trips/trash')} />

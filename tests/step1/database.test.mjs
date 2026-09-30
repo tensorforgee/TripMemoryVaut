@@ -11,7 +11,7 @@ import { unknownDates } from '../../.expo/step1-tests/domain/date-spec.js';
 test('initial migration creates only requested tables and is idempotent', async t => {
   const f = await fixture(t);
   const tables = await f.connection.getAllAsync("SELECT name FROM sqlite_schema WHERE type = 'table' ORDER BY name");
-  assert.deepEqual(tables.map(row => row.name), ['chapters', 'companions', 'draft_suggestions', 'import_batches', 'import_items', 'local_media_files', 'media', 'places', 'schema_migrations', 'stops', 'trip_chapters', 'trip_companions', 'trip_days', 'trip_media', 'trips', 'vaults']);
+  assert.deepEqual(tables.map(row => row.name), ['chapters', 'companions', 'draft_suggestions', 'dream_destinations', 'dream_visits', 'import_batches', 'import_items', 'local_media_files', 'media', 'places', 'schema_migrations', 'stops', 'trip_chapters', 'trip_companions', 'trip_days', 'trip_media', 'trips', 'vaults']);
   assert.equal((await f.connection.getFirstAsync('PRAGMA foreign_keys')).foreign_keys, 1);
   assert.equal((await f.connection.getFirstAsync('PRAGMA journal_mode')).journal_mode, 'wal');
   assert.equal((await f.connection.getFirstAsync('PRAGMA synchronous')).synchronous, 2);
