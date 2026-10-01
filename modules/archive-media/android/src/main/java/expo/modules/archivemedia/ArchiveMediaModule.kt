@@ -11,7 +11,9 @@ import androidx.exifinterface.media.ExifInterface
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.InputStream
 import java.io.RandomAccessFile
 import java.security.MessageDigest
 import java.time.LocalDateTime
@@ -44,6 +46,31 @@ class ArchiveMediaModule : Module() {
       while (true) { val n = input.read(buffer); if (n < 0) break; md.update(buffer, 0, n) }
     }
     return md.digest().joinToString("") { "%02x".format(it) }
+  }
+  private fun external(uri: String): InputStream {
+    val parsed = Uri.parse(uri)
+    require(parsed.scheme in listOf("file", "content")) { "INVALID_PATH" }
+    return if (parsed.scheme == "file") FileInputStream(File(requireNotNull(parsed.path)))
+    else requireNotNull(requireNotNull(appContext.reactContext).contentResolver.openInputStream(parsed)) { "SOURCE_UNAVAILABLE" }
+  }
+  private fun verifyStream(uri: String, expected: String, expectedSize: Long): Boolean {
+    if (!expected.matches(Regex("^[0-9a-f]{64}$")) || expectedSize < 0L) return false
+    val md = MessageDigest.getInstance("SHA-256"); var total = 0L
+    return try {
+      external(uri).buffered().use { input ->
+        val buffer = ByteArray(64 * 1024)
+        while (true) { val n = input.read(buffer); if (n < 0) break; total += n; if (total > expectedSize) return false; md.update(buffer, 0, n) }
+      }
+      total == expectedSize && md.digest().joinToString("") { "%02x".format(it) } == expected
+    } catch (_: Exception) { false }
+  }
+  private fun externalDigest(uri: String): Pair<Long,String> {
+    val md=MessageDigest.getInstance("SHA-256"); var total=0L
+    external(uri).buffered().use { input ->
+      val buffer=ByteArray(64*1024)
+      while(true) { val n=input.read(buffer); if(n<0) break; total+=n; md.update(buffer,0,n) }
+    }
+    return Pair(total,md.digest().joinToString("") { "%02x".format(it) })
   }
   private fun format(file: File): String {
     require(file.length() in 1..maxBytes) { "SIZE_LIMIT" }
@@ -135,6 +162,35 @@ class ArchiveMediaModule : Module() {
     }
     AsyncFunction("verify") { uri: String, expected: String, size: Double ->
       val f=owned(uri); f.isFile && f.length()==size.toLong() && hash(f)==expected
+    }
+    // Read-only verification for user-selected SAF export folders. Imported
+    // bytes are not trusted until this streaming digest and size check passes.
+    AsyncFunction("verifyExternal") { uri: String, expected: String, size: Double ->
+      verifyStream(uri, expected, size.toLong())
+    }
+    // Streams app-private export files into a user-selected SAF package without
+    // materializing originals in JS memory. The JS caller compares this byte count.
+    AsyncFunction("copyExternal") { source: String, destination: String ->
+      var total=0L; val digest=MessageDigest.getInstance("SHA-256")
+      external(source).buffered().use { input ->
+        val destinationUri=Uri.parse(destination); require(destinationUri.scheme in listOf("file","content")) { "INVALID_PATH" }
+        val write: (FileOutputStream) -> Unit = { output ->
+          val buffer=ByteArray(64*1024)
+          while(true) { val n=input.read(buffer); if(n<0) break; total+=n; digest.update(buffer,0,n); output.write(buffer,0,n) }
+          output.flush(); output.fd.sync()
+        }
+        if(destinationUri.scheme=="file") FileOutputStream(File(requireNotNull(destinationUri.path))).use(write)
+        else {
+          val resolver=requireNotNull(appContext.reactContext).contentResolver
+          requireNotNull(resolver.openFileDescriptor(destinationUri,"rwt")) { "DESTINATION_UNAVAILABLE" }.use { descriptor ->
+            FileOutputStream(descriptor.fileDescriptor).use(write)
+          }
+        }
+      }
+      val copiedHash=digest.digest().joinToString("") { "%02x".format(it) }
+      val actual=externalDigest(destination)
+      require(actual.first==total&&actual.second==copiedHash) { "COPY_VERIFY_FAILED expected=$total:$copiedHash actual=${actual.first}:${actual.second}" }
+      total.toDouble()
     }
     AsyncFunction("publish") { staging: String, destination: String, expected: String, size: Double ->
       val dest=owned(destination); val src=owned(staging)

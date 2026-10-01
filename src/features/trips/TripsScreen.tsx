@@ -21,6 +21,8 @@ export default function TripsScreen() {
         <Action title="My Map" onPress={() => router.push('/map')} />
         <Action title="My Travel Life" onPress={() => router.push('/life')} />
         <Action title="Dream Places" onPress={() => router.push('/dreams')} />
+        <Action title="Archive & restore" onPress={() => router.push('/archive')} />
+        {__DEV__ ? <Action title="Step 12 verification" onPress={() => router.push('/archive-test')} /> : null}
         <View style={{ flexDirection: 'row', gap: 8 }}><View style={{ flex: 1 }}><Action title="Companions" onPress={() => router.push('/companions')} /></View>
           <View style={{ flex: 1 }}><Action title="Life Chapters" onPress={() => router.push('/chapters')} /></View></View>
         <Action title="Trash" onPress={() => router.push('/trips/trash')} />
