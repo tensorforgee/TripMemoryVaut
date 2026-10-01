@@ -9,6 +9,7 @@ let service: Promise<ImportPipeline> | undefined;
 export function mediaService(): Promise<ImportPipeline> {
   return service ??= openVaultDatabase().then(v=>new ImportPipeline(new MediaRepository(v.database,v.vault.id,randomUUID),nativeMediaFiles(v.vault.id)));
 }
+export function resetMediaService(): void { service=undefined; }
 export async function selectPhotos(tripId: string) {
   // quality=1 uses Android's RawImageExporter (byte copy); exif/base64 disabled.
   const result=await launchImageLibraryAsync({mediaTypes:['images'],allowsMultipleSelection:true,selectionLimit:100,allowsEditing:false,quality:1,exif:false,base64:false});
