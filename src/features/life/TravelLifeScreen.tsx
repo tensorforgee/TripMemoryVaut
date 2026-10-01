@@ -67,6 +67,7 @@ export default function TravelLifeScreen() {
       {result.error ? <Problem error={result.error} retry={result.retry} /> : result.data ? <Overview value={result.data} /> : <Text>Reading your local archive…</Text>}
       <Action title="Open My Map" onPress={() => router.push('/map')} />
       <Action title="Browse Places" onPress={() => router.push('/life/places')} />
+      <Action title="Settings" onPress={() => router.push('/settings')} />
     </ScrollView>
   </SafeAreaView>;
 }

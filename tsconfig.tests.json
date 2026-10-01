@@ -29,6 +29,7 @@
     "src/features/companions/repository.ts", "src/features/chapters/repository.ts", "src/features/life/repository.ts",
     "src/features/dreams/repository.ts",
     "src/features/search/repository.ts", "src/features/search/schema.ts",
-    "src/services/archive/portable.ts"
+    "src/services/archive/portable.ts",
+    "src/features/settings/maintenance.ts", "src/features/settings/capabilities.ts", "src/features/settings/reset-coordinator.ts", "src/features/settings/reset-database.ts"
   ]
 }

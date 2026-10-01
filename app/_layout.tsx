@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { openVaultDatabase } from '../src/core/database/open';
 import { MigrationError } from '../src/core/database/migrate';
 import { mediaService } from '../src/features/media/service';
+import { completePendingVaultReset, recoverPendingVaultReset } from '../src/features/settings/native-reset';
 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
@@ -13,8 +14,8 @@ export default function RootLayout() {
     let active = true;
     // The shared connection lives for the app process. Screens open only after
     // migrations and vault initialization succeed; failure never resets data.
-    openVaultDatabase().then(
-      () => { if (active) setReady(true); void mediaService().then(s=>s.run()).catch(()=>{ /* persisted jobs expose recoverable failures in Photos */ }); },
+    recoverPendingVaultReset().then(() => openVaultDatabase()).then(
+      () => { completePendingVaultReset(); if (active) setReady(true); void mediaService().then(s=>s.run()).catch(()=>{ /* persisted jobs expose recoverable failures in Photos */ }); },
       (failure: unknown) => { if (active) setError(failure instanceof Error ? failure : new Error(String(failure))); },
     );
     return () => { active = false; };
@@ -46,6 +47,7 @@ export default function RootLayout() {
       <Stack.Screen name="dreams/index" options={{ title: 'Dream Places', header: tripHeader }} />
       <Stack.Screen name="dreams/[dreamId]" options={{ title: 'Dream', header: tripHeader }} />
       <Stack.Screen name="archive" options={{ title: 'Archive & restore', header: tripHeader }} />
+      <Stack.Screen name="settings/index" options={{ title: 'Settings', header: tripHeader }} />
       <Stack.Screen name="search" options={{ title: 'Search', header: tripHeader }} />
       <Stack.Screen name="reconstruction-test" options={{ title: 'Reconstruction verification', header: tripHeader }} />
       <Stack.Screen name="media-test" options={{ title: 'Media verification', header: tripHeader }} />
