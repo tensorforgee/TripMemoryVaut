@@ -30,6 +30,20 @@ export class ImportPipeline {
     }
     return this.repository.gallery(tripId,after);
   }
+  async regenerateDerivatives(): Promise<{generated:number;failed:number;missingOriginals:number}> {
+    let generated=0,failed=0,missingOriginals=0;
+    for(const asset of await this.repository.assets()) {
+      const exists=await this.files.exists(asset.relative_path);
+      await this.repository.availability(asset.id,exists);
+      if(!exists){missingOriginals++;continue;}
+      for(const variant of ['display','thumbnail'] as const) {
+        const outcome=await this.derivative(asset.id,asset.sha256,asset.extension,variant);
+        if(outcome==='generated')generated++;
+        else if(outcome==='failed')failed++;
+      }
+    }
+    return {generated,failed,missingOriginals};
+  }
   private async process(retry: boolean) {
     for(let item of await this.repository.items()) {
       let committed = false;
@@ -82,14 +96,18 @@ export class ImportPipeline {
   }
   private async derivatives(id: string, hash: string, extension: string) {
     for(const variant of ['display','thumbnail'] as const) {
-      const path=mediaPath(hash,extension,variant);
-      try {
-        // Re-register an orphan derivative by regenerating it; no original rewrite.
-        const registered=await this.repository.database.run(c=>c.getFirstAsync<{state:string}>(`SELECT state FROM local_media_files WHERE media_id=? AND vault_id=? AND variant=?`,id,this.repository.vaultId,variant));
-        if(registered?.state==='available' && await this.files.exists(path)) continue;
-        const data=await this.files.derive(mediaPath(hash,extension),path,variant==='display'?2048:320);
-        await this.repository.derivative(id,variant,path,data);
-      } catch { await this.repository.derivative(id,variant,path,null); }
+      await this.derivative(id,hash,extension,variant);
     }
+  }
+  private async derivative(id:string,hash:string,extension:string,variant:'display'|'thumbnail'):Promise<'existing'|'generated'|'failed'> {
+    const path=mediaPath(hash,extension,variant);
+    try {
+      // Re-register an orphan derivative by regenerating it; no original rewrite.
+      const registered=await this.repository.database.run(c=>c.getFirstAsync<{state:string}>(`SELECT state FROM local_media_files WHERE media_id=? AND vault_id=? AND variant=?`,id,this.repository.vaultId,variant));
+      if(registered?.state==='available' && await this.files.exists(path)) return 'existing';
+      const data=await this.files.derive(mediaPath(hash,extension),path,variant==='display'?2048:320);
+      await this.repository.derivative(id,variant,path,data);
+      return 'generated';
+    } catch { await this.repository.derivative(id,variant,path,null); return 'failed'; }
   }
 }

@@ -12,6 +12,7 @@ import { TravelLifeRepository } from '../../features/life/repository';
 import { DreamRepository } from '../../features/dreams/repository';
 import { GlobalMapRepository } from '../../features/map/repository';
 import { SearchRepository } from '../../features/search/repository';
+import { resetVaultContents } from '../../features/settings/reset-database';
 
 // One persistent connection per open vault, configured before migrations or queries.
 // A rejected initialization must be shown as recovery/error, never an empty vault.
@@ -38,6 +39,7 @@ export function sqliteMigrationServices(connection: SQLiteDatabase, databaseName
 }
 
 export type VaultDatabase = {
+  databaseName: string;
   database: LocalDatabase;
   vault: Vault;
   trips: TripRepository;
@@ -53,6 +55,19 @@ export type VaultDatabase = {
 };
 
 const opened = new Map<string, Promise<VaultDatabase>>();
+
+function createVaultHandle(databaseName: string, database: LocalDatabase, vault: Vault): VaultDatabase {
+  return {
+    databaseName, database, vault, trips: new TripRepository(database, vault.id, randomUUID), routes: new RouteRepository(database, vault.id, randomUUID),
+    timeline: new TimelineRepository(database, vault.id, randomUUID),
+    companions: new CompanionRepository(database, vault.id, randomUUID), chapters: new ChapterRepository(database, vault.id, randomUUID),
+    life: new TravelLifeRepository(database, vault.id),
+    dreams: new DreamRepository(database, vault.id, randomUUID),
+    map: new GlobalMapRepository(database, vault.id),
+    search: new SearchRepository(database, vault.id),
+    close: async () => { await database.close(); opened.delete(databaseName); },
+  };
+}
 
 export function openVaultDatabase(databaseName = 'vault.sqlite'): Promise<VaultDatabase> {
   // Avoid two initializers taking conflicting backups of the same database.
@@ -72,18 +87,20 @@ async function initialize(databaseName: string): Promise<VaultDatabase> {
     await configureConnection(connection);
     await migrateDatabase(database, sqliteMigrationServices(connection, databaseName));
     const vault = await getOrCreateVault(database, randomUUID);
-    return {
-      database, vault, trips: new TripRepository(database, vault.id, randomUUID), routes: new RouteRepository(database, vault.id, randomUUID),
-      timeline: new TimelineRepository(database, vault.id, randomUUID),
-      companions: new CompanionRepository(database, vault.id, randomUUID), chapters: new ChapterRepository(database, vault.id, randomUUID),
-      life: new TravelLifeRepository(database, vault.id),
-      dreams: new DreamRepository(database, vault.id, randomUUID),
-      map: new GlobalMapRepository(database, vault.id),
-      search: new SearchRepository(database, vault.id),
-      close: async () => { await database.close(); opened.delete(databaseName); },
-    };
+    return createVaultHandle(databaseName, database, vault);
   } catch (error) {
     await database.close();
     throw error;
   }
+}
+
+// Reset the contents through the live serialized connection. Closing and deleting
+// an in-use Expo SQLite database can race native statement finalization on Android.
+// A single transaction instead leaves the known schema intact while removing all
+// canonical and derived rows before a fresh empty vault is created.
+export async function resetOpenVaultDatabase(current: VaultDatabase): Promise<VaultDatabase> {
+  const cleanVault = await resetVaultContents(current.database, randomUUID);
+  const handle = createVaultHandle(current.databaseName, current.database, cleanVault);
+  opened.set(current.databaseName, Promise.resolve(handle));
+  return handle;
 }
