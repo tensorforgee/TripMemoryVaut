@@ -18,11 +18,13 @@ export default function TripsScreen() {
     <SectionList contentContainerStyle={styles.content} sections={tripSections(result.data ?? [])} keyExtractor={trip => trip.id}
       ListHeaderComponent={<View style={{ gap: 12 }}><Text style={styles.heading}>Your trips</Text>
         <Action title="Create trip" onPress={() => router.push('/trips/new')} />
+        <Action title="Search your memories" onPress={() => router.push('/search')} />
         <Action title="My Map" onPress={() => router.push('/map')} />
         <Action title="My Travel Life" onPress={() => router.push('/life')} />
         <Action title="Dream Places" onPress={() => router.push('/dreams')} />
         <Action title="Archive & restore" onPress={() => router.push('/archive')} />
         {__DEV__ ? <Action title="Step 12 verification" onPress={() => router.push('/archive-test')} /> : null}
+        {__DEV__ ? <Action title="Step 13 verification" onPress={() => router.push('/search-test')} /> : null}
         <View style={{ flexDirection: 'row', gap: 8 }}><View style={{ flex: 1 }}><Action title="Companions" onPress={() => router.push('/companions')} /></View>
           <View style={{ flex: 1 }}><Action title="Life Chapters" onPress={() => router.push('/chapters')} /></View></View>
         <Action title="Trash" onPress={() => router.push('/trips/trash')} />

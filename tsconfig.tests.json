@@ -28,6 +28,7 @@
     "src/core/media/files.ts", "src/features/reconstruction/repository.ts", "src/services/reconstruction/*.ts",
     "src/features/companions/repository.ts", "src/features/chapters/repository.ts", "src/features/life/repository.ts",
     "src/features/dreams/repository.ts",
+    "src/features/search/repository.ts", "src/features/search/schema.ts",
     "src/services/archive/portable.ts"
   ]
 }

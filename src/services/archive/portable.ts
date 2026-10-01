@@ -2,6 +2,7 @@ import type { LocalDatabase, SqlConnection, SqlValue } from '../../core/database
 import { mediaPath, type MediaFiles } from '../../core/media/files';
 import { migrations } from '../../core/database/migrate';
 import { parseDateSpec } from '../../domain/date-spec';
+import { rebuildSearchIndex } from '../../features/search/schema';
 
 export const PORTABLE_FORMAT = 'trip-memory-vault';
 export const PORTABLE_FORMAT_VERSION = 1;
@@ -420,6 +421,9 @@ export async function restorePortableArchive(input: { database: LocalDatabase; c
       for(const row of verified.data.chapters) if(row.deleted_at!==null) await connection.runAsync('UPDATE chapters SET deleted_at=? WHERE id=? AND vault_id=?',sqlValue(row,'deleted_at'),sqlValue(row,'id'),archiveId);
       for(const row of verified.data.places) if(row.deleted_at!==null) await connection.runAsync('UPDATE places SET deleted_at=? WHERE id=? AND vault_id=?',sqlValue(row,'deleted_at'),sqlValue(row,'id'),archiveId);
       for(const row of verified.data.trips) if(row.deleted_at!==null) await connection.runAsync('UPDATE trips SET deleted_at=? WHERE id=? AND vault_id=?',sqlValue(row,'deleted_at'),sqlValue(row,'id'),archiveId);
+      // Search is derived local state: never trust or import index internals.
+      // Rebuild once from the final canonical/tombstone state before activation.
+      await rebuildSearchIndex(connection,archiveId,String(vault.updated_at));
       const foreign=await connection.getAllAsync('PRAGMA foreign_key_check'); if(foreign.length) fail('Restored archive failed foreign-key verification');
     });
     for(const path of staging) try{await input.destinationMedia.removeStaging(path);}catch{/* completed originals remain authoritative */}

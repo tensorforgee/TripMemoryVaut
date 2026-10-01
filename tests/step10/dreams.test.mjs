@@ -33,7 +33,7 @@ test('migration 9 upgrades Step 8 and installs only Dream destination/visit doma
   await migrateDatabase(f.database, f.services);
   const tables = await f.connection.getAllAsync("SELECT name FROM sqlite_schema WHERE type='table' AND name LIKE 'dream_%' ORDER BY name");
   assert.deepEqual(tables.map(row => row.name), ['dream_destinations', 'dream_visits']);
-  assert.equal((await f.connection.getFirstAsync('PRAGMA user_version')).user_version, 9);
+  assert.equal((await f.connection.getFirstAsync('PRAGMA user_version')).user_version, 10);
   assert.deepEqual(await f.connection.getAllAsync('PRAGMA foreign_key_check'), []);
 });
 

@@ -20,7 +20,7 @@ test('migration 8 upgrades an existing Step 7 database and enforces join integri
   await migrateDatabase(f.database, f.services);
   const tables = await f.connection.getAllAsync("SELECT name FROM sqlite_schema WHERE type='table' AND name IN ('companions','trip_companions','chapters','trip_chapters') ORDER BY name");
   assert.deepEqual(tables.map(row => row.name), ['chapters', 'companions', 'trip_chapters', 'trip_companions']);
-  assert.equal((await f.connection.getFirstAsync('PRAGMA user_version')).user_version, 9);
+  assert.equal((await f.connection.getFirstAsync('PRAGMA user_version')).user_version, 10);
   const violations = await f.connection.getAllAsync('PRAGMA foreign_key_check'); assert.deepEqual(violations, []);
 });
 
