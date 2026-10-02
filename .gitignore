@@ -14,4 +14,8 @@ modules/**/.cxx/
 *.db*
 *.jks
 *.keystore
+*.p12
+*.pfx
+keystore.properties
+signing.properties
 local.properties

@@ -1,0 +1,11 @@
+// Ninja 1.10.2 resolves Prefab manifest inputs relative to its working directory.
+// Even with the short pnpm store, <package>/android/.cxx/RelWithDebInfo/.../../
+// exceeds Windows MAX_PATH. Relocate GENERATED staging, never package sources.
+if (System.getProperty('os.name').toLowerCase(java.util.Locale.ROOT).contains('windows')) {
+    subprojects { nativeProject ->
+        nativeProject.plugins.withId('com.android.library') {
+            nativeProject.extensions.getByName('android').externalNativeBuild.cmake.buildStagingDirectory =
+                rootProject.file(".cxx/${nativeProject.name}")
+        }
+    }
+}
