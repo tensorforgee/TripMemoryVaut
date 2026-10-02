@@ -49,6 +49,8 @@ export default function RootLayout() {
       <Stack.Screen name="archive" options={{ title: 'Archive & restore', header: tripHeader }} />
       <Stack.Screen name="settings/index" options={{ title: 'Settings', header: tripHeader }} />
       <Stack.Screen name="search" options={{ title: 'Search', header: tripHeader }} />
+      <Stack.Protected guard={__DEV__}>
+      <Stack.Screen name="database-test" options={{ title: 'Database verification', header: tripHeader }} />
       <Stack.Screen name="reconstruction-test" options={{ title: 'Reconstruction verification', header: tripHeader }} />
       <Stack.Screen name="media-test" options={{ title: 'Media verification', header: tripHeader }} />
       <Stack.Screen name="map-test" options={{ title: 'MapLibre compatibility' }} />
@@ -56,6 +58,7 @@ export default function RootLayout() {
       <Stack.Screen name="my-map-test" options={{ title: 'My Map verification', header: tripHeader }} />
       <Stack.Screen name="archive-test" options={{ title: 'Archive verification', header: tripHeader }} />
       <Stack.Screen name="search-test" options={{ title: 'Search verification', header: tripHeader }} />
+      </Stack.Protected>
     </Stack>
   );
 }

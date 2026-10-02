@@ -44,7 +44,8 @@ export default function SettingsScreen(){
     'Trips, photos, memories, Dreams, previews, imports, and local search data will be removed from this device. Exports saved elsewhere are not removed.',[
       {text:'Cancel',style:'cancel'},{text:'Delete permanently',style:'destructive',onPress:()=>{void(async()=>{setBusy('reset');setError('');try{const vault=await openVaultDatabase();await resetLocalVault(vault);setDeleteMode(false);setPhrase('');setReport(undefined);setNotice('Local vault data deleted. A clean empty vault is ready.');router.replace('/');}catch(e){setError(`Reset did not complete. It will resume before the vault opens again. ${message(e)}`);}finally{setBusy('');}})();}},
     ]);
-  const appVersion=Constants.expoConfig?.version??settingsVersions.appVersion;const build=Constants.nativeBuildVersion;
+  const appVersion=Constants.expoConfig?.version??settingsVersions.appVersion;
+  const build=Constants.nativeBuildVersion??Constants.expoConfig?.android?.versionCode?.toString();
   return <SafeAreaView style={styles.page} edges={['bottom','left','right']}><ScrollView contentContainerStyle={styles.content}>
     <Text style={styles.heading}>Settings</Text><Text style={styles.text}>Understand and safely maintain this local Trip Memory Vault.</Text>
 
@@ -85,7 +86,7 @@ export default function SettingsScreen(){
     </Section>
 
     <Section title="About">
-      <Row label="App" value={settingsVersions.appName}/><Row label="Version" value={appVersion}/><Row label="Build" value={build??'Development build'}/>
+      <Row label="App" value={settingsVersions.appName}/><Row label="Version" value={appVersion}/><Row label="Build" value={build??'Unavailable'}/>
       <Row label="Database schema" value={String(settingsVersions.schemaVersion)}/><Row label="Portable export format" value={String(settingsVersions.exportFormatVersion)}/>
     </Section>
 

@@ -9,6 +9,7 @@
     ],
     "android": {
       "package": "com.tripmemoryvault.app",
+      "versionCode": 1,
       "allowBackup": false,
       "blockedPermissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
@@ -24,9 +25,10 @@
     },
     "plugins": [
       "expo-dev-client",
-      "expo-router",
+      ["expo-router", { "sitemap": false }],
       "expo-status-bar",
       "expo-sqlite",
+      "./plugins/withAndroidRelease",
       "@maplibre/maplibre-react-native",
       [
         "expo-image-picker",
