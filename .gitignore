@@ -19,3 +19,4 @@ modules/**/.cxx/
 keystore.properties
 signing.properties
 local.properties
+/.local-signing/
