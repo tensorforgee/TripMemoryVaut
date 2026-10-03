@@ -6,13 +6,13 @@ def uploadEnvironment = [
     keyPassword: System.getenv('TMV_UPLOAD_KEY_PASSWORD')
 ]
 def unsignedRelease = providers.gradleProperty('tmvUnsignedRelease').orNull == 'true'
-def hasUploadSigning = uploadEnvironment.values().every { it != null && !it.isEmpty() }
+def hasUploadSigning = uploadEnvironment.values().every { it != null && !it.trim().isEmpty() }
 def partialUploadSigning = uploadEnvironment.values().any { it != null && !it.isEmpty() } && !hasUploadSigning
 
 android.buildTypes.release.signingConfig = null
 if (hasUploadSigning && !unsignedRelease) {
     android.signingConfigs.create('upload') {
-        storeFile file(uploadEnvironment.store)
+        storeFile new File(uploadEnvironment.store)
         storePassword uploadEnvironment.storePassword
         keyAlias uploadEnvironment.alias
         keyPassword uploadEnvironment.keyPassword
@@ -31,8 +31,30 @@ gradle.taskGraph.whenReady { graph ->
         if (!hasUploadSigning && !unsignedRelease) {
             throw new GradleException('Production upload signing is required. Configure TMV_UPLOAD_* locally; for a NON-UPLOADABLE verification artifact explicitly set -PtmvUnsignedRelease=true. See docs/release-hardening.md.')
         }
-        if (hasUploadSigning && !file(uploadEnvironment.store).isFile()) {
-            throw new GradleException('The configured upload keystore does not exist. No debug signing fallback is permitted.')
+        if (hasUploadSigning) {
+            // Check credentials before compilation, without printing paths, aliases or provider errors.
+            def storePasswordChars = uploadEnvironment.storePassword.toCharArray()
+            def keyPasswordChars = uploadEnvironment.keyPassword.toCharArray()
+            try {
+                def store = new File(uploadEnvironment.store)
+                if (!store.isAbsolute() || !store.isFile()) throw new IllegalArgumentException()
+                def keystore = java.security.KeyStore.getInstance(store, storePasswordChars)
+                def key = keystore.getKey(uploadEnvironment.alias, keyPasswordChars)
+                def certificate = keystore.getCertificate(uploadEnvironment.alias)
+                if (!(key instanceof java.security.PrivateKey) ||
+                    !(certificate instanceof java.security.cert.X509Certificate)) throw new IllegalArgumentException()
+                certificate.checkValidity()
+                if (certificate.subjectX500Principal.name.toLowerCase(java.util.Locale.ROOT).contains('cn=android debug')) {
+                    throw new IllegalArgumentException()
+                }
+                if (!(certificate.publicKey instanceof java.security.interfaces.RSAPublicKey) ||
+                    certificate.publicKey.modulus.bitLength() < 2048) throw new IllegalArgumentException()
+            } catch (Exception ignored) {
+                throw new GradleException('Upload signing validation failed. Check the absolute keystore path, alias, both passwords and a valid non-debug RSA certificate (at least 2048 bits). Values are withheld; no debug fallback is permitted.')
+            } finally {
+                java.util.Arrays.fill(storePasswordChars, (char) 0)
+                java.util.Arrays.fill(keyPasswordChars, (char) 0)
+            }
         }
         if (providers.gradleProperty('expo.devlauncher.configureInRelease').orNull == 'true') {
             throw new GradleException('The development launcher must not be enabled in release builds.')
