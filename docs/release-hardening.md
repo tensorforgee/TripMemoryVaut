@@ -3,10 +3,10 @@
 Scope: production builds and verification of the existing Steps 0–14. No domain,
 migration, dependency-version, lockfile, or product-feature changes.
 
-Current status: the authorized production upload key has been created and the
-signed AAB is cryptographically verified. See the final provisioning/results
-section; earlier unsigned results are historical. ARM64 runtime and store rollout
-checks remain outstanding.
+Current status: the production upload-signed AAB is cryptographically verified,
+and its companion production APK passes physical ARM64 verification on a Pixel 9
+(API 36, 4 KB pages). See the final physical-device results below; earlier missing
+signing/device results are historical. Store rollout checks remain separate.
 
 ## Baseline
 
@@ -653,3 +653,98 @@ This supersedes the earlier missing-signing blocker. It is not a store rollout
 approval: independent key/credential backup, physical ARM64 runtime verification,
 Play App Signing enrollment/upload-certificate registration, production listing,
 privacy declarations and the documented API 24–27 support disclosure remain.
+
+## Physical ARM64 release verification — 2026-10-04
+
+Scope: the existing production release on the connected physical phone. No product,
+dependency, signing, minimum-SDK or application-code changes were needed. No emulator
+was connected or substituted. No uninstall, vault reset, commit or push was performed.
+
+### Device and installed artifact
+
+| Property | Observed result |
+| --- | --- |
+| Physical device | Google Pixel 9, product/device `tokay`; emulator properties unset |
+| Android / API | Android 16 / API 36 |
+| Device ABI list / installed primary ABI | `arm64-v8a` / `arm64-v8a`; secondary ABI absent |
+| Page size | 4,096 bytes; this is not a 16 KB ARM64 runtime test |
+| Available `/data` storage before installation | Approximately 23 GB free of 109 GB |
+| Installed APK | `android/app/build/outputs/apk/release/app-release.apk`, 155,883,819 bytes |
+| Package / version | `com.tripmemoryvault.app`, `0.1.0` / `1` |
+| APK SHA-256 | `23F0EB4584CE8EA549A23597F01E8892CDED1D8E187C13BFDBE9A200D4B99C26` |
+| Companion AAB SHA-256 | `B4B96E07654C2FE568C93CF763B721AAE29EDFCC0077C5E704A5AD57C89F9FE0` |
+| Upload certificate SHA-256 | `78D9362E5104B4ECFCAF7146443234DEFC4F9C900BE486CE5B717B0FBBFB0DF3` |
+
+The APK and AAB hashes match the completed production build documented above.
+`apksigner` verifies APK Signature Scheme v2 against the independently exported
+upload certificate; `zipalign -c -P 16 4` passes. The embedded Hermes bundle and
+all 25 ARM64 native libraries were individually hash-compared between APK and AAB:
+all 26 payloads match. Manifest/package inspection confirms release flags, four
+packaged ABIs, and only the two documented permissions; INTERNET is absent.
+There was no existing installation or signing conflict. `adb install -r` succeeded.
+No Metro listener, ADB reverse mapping, Expo Go, development client or localhost
+JS serving was used. About reports version 0.1.0, build 1 and schema 10.
+
+### Physical workflow results
+
+| Check | Result |
+| --- | --- |
+| Trips / create / open / Trip Detail | PASS: saved and reopened `ARM64ReleaseVerification`, with unknown dates preserved |
+| Timeline | PASS: created and reopened `ARM64SyntheticSection`, no dates invented |
+| Places / Stops route | PASS: created synthetic `ARM64SyntheticPlace` at test coordinates 30.1, 77.1; saved Stop and route remain readable |
+| Trip Map / Global My Map | PASS: native maps report ready, numbered markers render, pan and double-tap zoom visibly move the marker; local list remains available |
+| Companions / Chapters / Dreams | PASS: production screens, inputs and empty states open |
+| Travel Life | PASS: 1 saved Trip, 1 Place, 1 visit and 2 unique Photos; draft excluded |
+| Search | PASS: local ARM64 query returns the test Trip, Place and timeline section |
+| Settings | PASS: storage, maintenance, privacy, About and integrity results render |
+| Reanimated / Worklets | PASS for existing navigation and interactions: native Worklets load succeeds; no native-runtime or navigation crash observed |
+| System photo picker | PASS: selected only synthetic JPEG/PNG from a dedicated device folder; 2 selected, 2 archived, 0 failures |
+| Derivatives / viewer | PASS: both thumbnails and oriented JPEG/transparent PNG display images render, including after offline process restarts |
+| Reconstruction | PASS: deterministic flow runs on both photos; one pending timestamp-based section, one date-unknown photo; canonical dates and structure unchanged |
+| ArchiveMedia integrity | PASS: SQLite/FKs healthy, known schema 10, 2 originals hash-verified, 4 healthy search documents, no interrupted imports |
+| Archive export | PASS: native SAF folder selection, export and verification complete; independently verified sizes and SHA-256 for all 20 manifest-listed files |
+
+The synthetic JPEG's EXIF timestamp and UTC offset survive picker import; the
+system picker redacts GPS. Export preserves that received representation with
+`source_fidelity=picker_representation`, null GPS and null corrections. The JPEG
+export hash is `1bac88347e0290c19533c978b7ef8dacc7557c2b979a9e2e57352841daf78480`;
+it is not claimed byte-identical to the pre-picker JPEG. The PNG original is
+301 bytes and matches the repository fixture hash
+`78a142d9b15903ad9ceb777925097f201e0a630d42246b13b9016392336661c8`.
+Export reads the durable app-owned originals, not picker references. The separately
+created user draft was preserved; no user photo library content was imported.
+
+Export destination on the phone:
+`Documents/TMV-ARM64-Verification/Trip-Memory-Vault-2026-10-03-1948fb94`.
+The folder date is UTC. Local verification evidence is under ignored `.expo/arm64-*`,
+including UI hierarchies/screenshots, process logs, export copy, payload comparison
+and regression output. Test content and the export remain available for inspection.
+
+### Offline, restart and crash audit
+
+Four clean cold launches succeeded, including two after disabling Wi-Fi and mobile
+data. Android reported `wifi_on=0`, active subscription `mobile_data1=0`, user mobile
+data false and **no active default network**. The legacy unsuffixed `mobile_data`
+setting stays 1 on this device; subscription state and connectivity establish the
+actual offline condition. Trips, photos, timeline, route, search and Settings work
+offline; both maps retain bundled overview, markers and lists without detailed
+tiles. Both offline restarts reopen the database and pass the integrity audit;
+media remains readable and schema 10 is stable. Wi-Fi and mobile data were restored
+to enabled after verification.
+
+App-session process logs and the timestamp-bounded crash buffer show no
+AndroidRuntime FATAL EXCEPTION, ReactNativeJS fatal error, UnsatisfiedLinkError,
+SIGSEGV, native loader failure, or MapLibre/Worklets/Reanimated/ArchiveMedia failure.
+Hermes loads from the installed ARM64 APK and React Native runs `main`. Package exit
+history contains only the three intentional force-stops, no crash or ANR. Routine
+SoLoader/Bridgeless initialization, generated-setter fallback and predictive-back
+warnings were not treated as crashes.
+
+Regression: TypeScript, test compilation, all existing Step 1–14 and release tests
+pass (**168 passed, zero failures/skips**); `git diff --check` passes. No ARM64-only
+blocker was reproduced. API 24–27 behavior was not tested on this API 36 phone, and
+minSdk remains 24. Physical 16 KB ARM64 and Play-delivered signing are outside this
+device result. Owner key backup, Play enrollment, listing/privacy declarations and
+the documented older-Android support disclosure remain separate rollout work.
+
+**PASS — ARM64 RELEASE VERIFIED**
