@@ -21,7 +21,8 @@
     "test:step11": "tsc -p tsconfig.tests.json && node --test tests/step11/*.test.mjs",
     "test:step12": "tsc -p tsconfig.tests.json && node --test tests/step12/*.test.mjs",
     "test:step13": "tsc -p tsconfig.tests.json && node --test tests/step13/*.test.mjs",
-    "test:step14": "tsc -p tsconfig.tests.json && node --test tests/step14/*.test.mjs"
+    "test:step14": "tsc -p tsconfig.tests.json && node --test tests/step14/*.test.mjs",
+    "test:routing-credentials": "tsc -p tsconfig.tests.json && node --test tests/routing-credentials/*.test.mjs"
   },
   "dependencies": {
     "@maplibre/maplibre-react-native": "11.4.0",
@@ -34,6 +35,7 @@
     "expo-image-picker": "57.0.20",
     "expo-linking": "57.0.11",
     "expo-router": "57.0.23",
+    "expo-secure-store": "~57.0.4",
     "expo-sqlite": "57.0.3",
     "expo-status-bar": "57.0.1",
     "react": "19.2.3",

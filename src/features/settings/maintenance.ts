@@ -2,6 +2,7 @@ import type { LocalDatabase, SqlConnection } from '../../core/database/database'
 import { migrations } from '../../core/database/migrate';
 import { mediaPath } from '../../core/media/files';
 import { SEARCH_INDEX_VERSION, rebuildSearchIndex, searchDocumentSelect } from '../search/schema';
+import { roadRouteIntegrity } from '../road-route/repository';
 
 export const STALE_STAGING_MS=24*60*60*1000;
 export type OwnedFileKind='original'|'derivative'|'staging';
@@ -145,7 +146,8 @@ export class VaultMaintenance {
       )`,this.vaultId,this.vaultId))?.count);
       const interrupted=number((await connection.getFirstAsync<{count:number}>(`SELECT count(*) count FROM import_items
         WHERE vault_id=? AND state IN ('selected','copying','staged','verified')`,this.vaultId))?.count);
-      return {sqliteOk:sqlite.length===1&&sqlite[0].integrity_check==='ok',foreignIssues:foreign.length,migrationIssues,
+      const roadIssues = await roadRouteIntegrity(connection, this.vaultId);
+      return {roadIssues,sqliteOk:sqlite.length===1&&sqlite[0].integrity_check==='ok',foreignIssues:foreign.length,migrationIssues,
         searchHealthy:state?.index_version===SEARCH_INDEX_VERSION&&expectedCount===documentCount&&projectionDiff===0,documentCount,interrupted};
     });
     const staging=new Set(inventory.filter(file=>file.kind==='staging').map(file=>file.relativePath));
@@ -153,6 +155,7 @@ export class VaultMaintenance {
       `SELECT staging_relative_path,state FROM import_items WHERE vault_id=? AND state IN ('copying','staged','verified')`,this.vaultId));
     const stagingIssues=expectedStaging.filter(row=>!staging.has(row.staging_relative_path)).length;
     const lines=[
+      integrityLine('roads','Saved road geometry',db.roadIssues===0,db.roadIssues===0?'Saved geometry, provenance and Stop references are valid.':`${db.roadIssues} invalid road segments; preserve the archive for repair.`),
       integrityLine('database','Database relationships',db.sqliteOk&&db.foreignIssues===0,db.sqliteOk&&db.foreignIssues===0?'SQLite and foreign keys are healthy.':`${db.foreignIssues} broken database relationships detected.`),
       integrityLine('schema','Schema and migrations',db.migrationIssues===0,db.migrationIssues===0?`Schema version ${migrations.length} is known.`:'Schema version or migration history is inconsistent.'),
       integrityLine('originals','Original photos',missing+mismatch+recordIssues===0,missing+mismatch+recordIssues===0?`${verified} original photos verified.`:`${missing} missing, ${mismatch} size/hash mismatches, ${recordIssues} file-record issues.`),

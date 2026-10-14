@@ -1,5 +1,9 @@
 # Step 7 — confirmed Trip Map
 
+This is the historical Step 7 implementation. The screen is superseded by
+[Trip Map V2 Phase 1](trip-map-v2.md); its canonical geometry, camera helpers,
+tests, coordinate exclusions and route meaning remain unchanged.
+
 Trip Detail → Trip Map reads the existing local route repository: active Trip,
 ordered active Stops and their canonical Places. Timeline section labels come
 from the existing Timeline query. No suggestion, photo GPS or reconstruction

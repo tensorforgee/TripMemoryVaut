@@ -3,9 +3,12 @@ import { mediaPath, type MediaFiles } from '../../core/media/files';
 import { migrations } from '../../core/database/migrate';
 import { parseDateSpec } from '../../domain/date-spec';
 import { rebuildSearchIndex } from '../../features/search/schema';
+import { canonicalCoordinate } from '../../features/map/model';
+import { splitAtDateline, sameCoordinate, STOPS_ONLY_LABEL } from '../../features/road-route/model';
+import { roadRouteFromRow, type RoadRouteRow } from '../../features/road-route/repository';
 
 export const PORTABLE_FORMAT = 'trip-memory-vault';
-export const PORTABLE_FORMAT_VERSION = 1;
+export const PORTABLE_FORMAT_VERSION = 2;
 export const APP_VERSION = '0.1.0';
 const MAX_JSON_BYTES = 50 * 1024 * 1024;
 const MAX_ARCHIVE_BYTES = 1024 * 1024 * 1024 * 1024;
@@ -20,7 +23,7 @@ export type ArchiveFileEntry = { path: string; sha256: string; bytes: number; ki
 export type ArchiveCounts = Record<EntityName, number>;
 export type PortableManifest = {
   export_format: typeof PORTABLE_FORMAT;
-  format_version: typeof PORTABLE_FORMAT_VERSION;
+  format_version: 1 | typeof PORTABLE_FORMAT_VERSION;
   created_at: string;
   app_version: string;
   schema_version: number;
@@ -69,6 +72,7 @@ const entitySpecs = {
   places: { path: 'data/places.json', table: 'places', columns: ['id','vault_id','name','latitude','longitude','coordinate_precision','source','provenance_json','aliases_json','created_at','updated_at','deleted_at'], json: { provenance_json: 'provenance', aliases_json: 'aliases' }, order: 'id' },
   trip_days: { path: 'data/trip-days.json', table: 'trip_days', columns: ['id','vault_id','trip_id','position','label','dates_json','created_at','updated_at','deleted_at'], json: { dates_json: 'dates' }, order: 'trip_id,position,id' },
   stops: { path: 'data/stops.json', table: 'stops', columns: ['id','vault_id','trip_id','place_id','day_id','position','kind','visit_confirmed','detail_certainty','source','dates_json','note','lodging_label','checkout_dates_json','created_at','updated_at','deleted_at','deleted_by_trip'], json: { dates_json: 'dates', checkout_dates_json: 'checkout_dates' }, booleans: ['visit_confirmed','deleted_by_trip'], order: 'trip_id,position,id' },
+  road_route_segments: { path: 'data/road-route-segments.json', table: 'road_route_segments', columns: ['id','vault_id','trip_id','from_stop_id','to_stop_id','version','input_json','via_points_json','geometry_json','provenance_json','distance_meters','confirmation_status','confirmed_at','stale','created_at','updated_at','deleted_at'], json: { input_json:'input', via_points_json:'via_points', geometry_json:'geometry', provenance_json:'provenance' }, booleans:['stale'], order:'trip_id,id' },
   media: { path: 'data/media.json', table: 'media', columns: ['id','vault_id','sha256','byte_size','mime_type','extension','width','height','original_filename','source_fidelity','source_metadata_json','capture_override_json','location_override_json','parser_version','created_at','updated_at','deleted_at'], json: { source_metadata_json: 'source_metadata', capture_override_json: 'capture_override', location_override_json: 'location_override' }, order: 'id' },
   trip_media: { path: 'data/trip-media.json', table: 'trip_media', columns: ['id','vault_id','trip_id','media_id','day_id','stop_id','position','caption','is_favourite','created_at','updated_at','deleted_at','deleted_by_trip'], booleans: ['is_favourite','deleted_by_trip'], order: 'trip_id,position,id' },
   companions: { path: 'data/companions.json', table: 'companions', columns: ['id','vault_id','label','note','created_at','updated_at','deleted_at'], order: 'id' },
@@ -162,6 +166,9 @@ async function snapshot(database: LocalDatabase, vaultId: string): Promise<{data
 
 async function addText(io: ArchiveIO, root: string, files: ArchiveFileEntry[], path: string, value: string, kind: FileKind): Promise<void> {
   safePath(path); const bytes = byteLength(value);
+  // Detailed geometry can make a data envelope large. Never finalize an export
+  // that this reader would refuse on its existing JSON size boundary.
+  if (kind === 'data' && bytes > MAX_JSON_BYTES) fail(`${path} exceeds the portable JSON size limit; export was not completed`);
   await io.writeText(root, path, value);
   files.push({ path, sha256: await io.sha256Text(value), bytes, kind });
 }
@@ -180,23 +187,44 @@ function journal(data: Record<EntityName, Row[]>): string {
   const stops = new Map<string, Row[]>();
   for (const stop of data.stops) stops.set(String(stop.trip_id), [...(stops.get(String(stop.trip_id)) ?? []), stop]);
   const sections = data.trips.map(trip => `<section><h2>${escapeHtml(trip.title)}</h2><p>${escapeHtml(humanDate(trip.dates))}${trip.deleted_at ? ' · In trash' : ''} · ${escapeHtml(trip.status)}</p><ol>${(stops.get(String(trip.id)) ?? []).map(stop => `<li>${escapeHtml(places.get(stop.place_id)?.name ?? 'Unknown place')} · ${escapeHtml(stop.kind)} · ${escapeHtml(stop.dates ? humanDate(stop.dates) : 'Date inherited from trip')}${stop.deleted_at ? ' · Removed' : ''}</li>`).join('')}</ol></section>`).join('');
-  return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Trip Memory Vault</title><style>body{font:16px system-ui;line-height:1.5;max-width:900px;margin:auto;padding:2rem;color:#17283b}section{border-top:1px solid #ccd5df;padding:1rem 0}small{color:#556}</style><h1>${escapeHtml(data.vaults[0]?.name ?? 'Trip Memory Vault')}</h1><p>This journal is a readable view. The versioned JSON files are authoritative for restore.</p>${sections}</html>`;
+  const roads = data.road_route_segments.map(row => {
+    const route = portableRoad(row);
+    return `<li>Trip ${escapeHtml(route.tripId)} · Stops ${escapeHtml(route.input.fromStopId)} → ${escapeHtml(route.input.toStopId)} · User-confirmed generated road suggestion; not a recorded historical track${route.stale ? ' · STALE: Stops changed' : ''}${row.deleted_at ? ' · Removed' : ''} · generated ${escapeHtml(route.provenance.generatedAt)} · confirmed ${escapeHtml(route.confirmedAt)}${route.distanceMeters === null ? '' : ` · provider distance ${route.distanceMeters} m`} · ${route.viaPoints.length} via points · ${escapeHtml(route.provenance.attribution)} · <a href="${escapeHtml(route.provenance.license)}">CC-BY-SA 4.0</a></li>`;
+  }).join('');
+  return `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Trip Memory Vault</title><style>body{font:16px system-ui;line-height:1.5;max-width:900px;margin:auto;padding:2rem;color:#17283b}section{border-top:1px solid #ccd5df;padding:1rem 0}small{color:#556}</style><h1>${escapeHtml(data.vaults[0]?.name ?? 'Trip Memory Vault')}</h1><p>This journal is a readable view. The versioned JSON files are authoritative for restore.</p>${sections}<h2>Road geometry</h2><p>Without a current confirmed suggestion: ${STOPS_ONLY_LABEL}. Road suggestions reflect the provider network at generation, not proof of historical travel. Geometry and provenance: <a href="../routes/routes.geojson">GeoJSON</a>. Route data attribution: <a href="https://openrouteservice.org/">openrouteservice / HeiGIT</a>, <a href="https://www.openstreetmap.org/copyright">OpenStreetMap contributors</a>. Licensing applies to provider results, not your separate photos or notes.</p><ul>${roads}</ul></html>`;
+}
+
+function portableRoad(row: Row) {
+  const spec: EntitySpec = entitySpecs.road_route_segments;
+  const values = decodeRow(spec, row);
+  return roadRouteFromRow(Object.fromEntries(spec.columns.map((column, i) => [column, values[i]])) as RoadRouteRow);
 }
 
 function routes(data: Record<EntityName, Row[]>): Row {
   const places = new Map(data.places.map(row => [row.id, row]));
   const features: Row[] = [];
   for (const trip of data.trips) {
-    let segment: number[][] = [];
-    const flush = () => { if (segment.length > 1) features.push({ type: 'Feature', geometry: { type: 'LineString', coordinates: segment }, properties: { trip_id: trip.id, trip_title: trip.title, meaning: 'confirmed stop sequence; not travelled roads' } }); segment = []; };
-    for (const stop of data.stops.filter(row => row.trip_id === trip.id && row.deleted_at === null && row.visit_confirmed === true)) {
+    let previous: { coordinate: [number,number]; id: unknown } | null = null;
+    for (const stop of data.stops.filter(row => row.trip_id === trip.id && row.deleted_at === null).sort((a,b) => Number(a.position)-Number(b.position))) {
       const place = places.get(stop.place_id);
-      if (!place || place.deleted_at !== null || typeof place.latitude !== 'number' || typeof place.longitude !== 'number') { flush(); continue; }
-      const coordinate = [place.longitude, place.latitude] as number[];
+      const coordinate = place && place.deleted_at === null && stop.visit_confirmed === true
+        ? canonicalCoordinate(place.latitude as number|null, place.longitude as number|null) : null;
+      if (!coordinate || !place) { previous = null; continue; }
       features.push({ type: 'Feature', geometry: { type: 'Point', coordinates: coordinate }, properties: { trip_id: trip.id, stop_id: stop.id, place_id: place.id, name: place.name, position: stop.position } });
-      segment.push(coordinate);
+      if (previous && !sameCoordinate(previous.coordinate, coordinate) && Math.abs(previous.coordinate[0]-coordinate[0]) <= 180)
+        features.push({ type:'Feature', geometry:{type:'LineString',coordinates:[previous.coordinate,coordinate]},
+          properties:{trip_id:trip.id,from_stop_id:previous.id,to_stop_id:stop.id,kind:'trip_sequence',meaning:STOPS_ONLY_LABEL} });
+      previous = { coordinate, id:stop.id };
     }
-    flush();
+  }
+  for (const row of data.road_route_segments) {
+    const route = portableRoad(row);
+    const parts = splitAtDateline(route.geometry.coordinates);
+    features.push({ type:'Feature', geometry:parts.length === 1 ? {type:'LineString',coordinates:parts[0]} : {type:'MultiLineString',coordinates:parts},
+      properties:{trip_id:route.tripId,route_id:route.id,from_stop_id:route.input.fromStopId,to_stop_id:route.input.toStopId,
+        kind:'generated_road',confirmation_status:'confirmed',stale:route.stale,deleted_at:row.deleted_at,confirmed_at:route.confirmedAt,
+        meaning:'User-confirmed generated road suggestion; not a recorded historical track',provenance:route.provenance,
+        via_points:route.viaPoints,distance_meters:route.distanceMeters} });
   }
   return { type: 'FeatureCollection', features };
 }
@@ -213,7 +241,7 @@ export async function createPortableExport(input: { database: LocalDatabase; vau
     for (const name of names) await addText(input.io, input.stagingRoot, files, entitySpecs[name].path,
       stableJson({ entity: name, format_version: PORTABLE_FORMAT_VERSION, records: data[name] }), 'data');
     await addText(input.io, input.stagingRoot, files, 'README.txt', 'Trip Memory Vault portable export\n\nOpen journal/index.html for a readable view. JSON under data/ is authoritative. Original media is byte-preserved under media/originals/. Do not edit files if you intend to restore this package.\n', 'documentation');
-    await addText(input.io, input.stagingRoot, files, 'schemas/v1/README.txt', 'Format v1 uses UTF-8 JSON. IDs and null values are preserved. DateSpec values remain structured objects. Every file except manifest.json and COMPLETE.json is listed in manifest.files with its SHA-256 and byte length.\n', 'schema');
+    await addText(input.io, input.stagingRoot, files, 'schemas/v2/README.txt', 'Format v2 uses UTF-8 JSON and adds road_route_segments version 1, confirmed generated geometry, input Stop snapshots, ordered via points, stale state, provider attribution/license and optional distance in metres. Older readers must refuse v2. IDs and nulls are preserved. DateSpec values remain structured objects. All payload files have SHA-256 and byte length in manifest.files. Route geometry is provider-derived, never proof of historical travel.\n', 'schema');
     await addText(input.io, input.stagingRoot, files, 'journal/index.html', journal(data), 'journal');
     await addText(input.io, input.stagingRoot, files, 'routes/routes.geojson', stableJson(routes(data)), 'route');
     for (const asset of originals) {
@@ -233,6 +261,7 @@ export async function createPortableExport(input: { database: LocalDatabase; vau
       checksum_algorithm: 'SHA-256',
       capabilities: { original_media: true, tombstones: true, resolved_reconstruction_history: true, regenerable_derivatives_omitted: true }, files,
     };
+    validateData(manifest, data);
     const manifestText = stableJson(manifest);
     await input.io.writeText(input.stagingRoot, 'manifest.json', manifestText);
     await input.io.writeText(input.stagingRoot, 'COMPLETE.json', stableJson({ manifest_sha256: await input.io.sha256Text(manifestText) }));
@@ -258,7 +287,8 @@ async function readAndVerify(io: ArchiveIO, root: string): Promise<VerifiedArchi
   if (byteLength(manifestText) > MAX_JSON_BYTES) fail('Manifest is too large');
   const raw = object(parseJson(manifestText, 'manifest.json'), 'manifest.json');
   if (raw.export_format !== PORTABLE_FORMAT) fail('This is not a Trip Memory Vault export');
-  if (raw.format_version !== PORTABLE_FORMAT_VERSION) fail(`Unsupported export format version: ${String(raw.format_version)}`);
+  if (raw.format_version !== 1 && raw.format_version !== PORTABLE_FORMAT_VERSION) fail(`Unsupported export format version: ${String(raw.format_version)}`);
+  if ((raw.format_version === 1 && Number(raw.schema_version) > 10) || (raw.format_version === 2 && Number(raw.schema_version) < 11)) fail('Archive format/schema version mismatch');
   if(!Number.isSafeInteger(raw.schema_version)||Number(raw.schema_version)<1||Number(raw.schema_version)>migrations.length)fail(`Unsupported archive schema version: ${String(raw.schema_version)}`);
   if (!uuidPattern.test(String(object(raw.vault, 'manifest.vault').id))) fail('Manifest vault ID is invalid');
   if (!Array.isArray(raw.files)) fail('Manifest files list is missing');
@@ -274,17 +304,20 @@ async function readAndVerify(io: ArchiveIO, root: string): Promise<VerifiedArchi
     total += Number(row.bytes); if (total > MAX_ARCHIVE_BYTES) fail('Archive declared size is too large');
     return { path, sha256: String(row.sha256), bytes: Number(row.bytes), kind: row.kind as FileKind };
   });
-  for (const name of names) if (!seen.has(entitySpecs[name].path)) fail(`Required file is missing: ${entitySpecs[name].path}`);
+  const archiveNames = names.filter(name => raw.format_version !== 1 || name !== 'road_route_segments');
+  if (raw.format_version === 1 && (seen.has(entitySpecs.road_route_segments.path) || object(raw.counts,'counts').road_route_segments !== undefined)) fail('Road routes require portable format v2');
+  for (const name of archiveNames) if (!seen.has(entitySpecs[name].path)) fail(`Required file is missing: ${entitySpecs[name].path}`);
   for (const file of files) {
     if (!await io.exists(root, file.path)) fail(`Archive file is missing: ${file.path}`);
     if (!await io.verifyFile(root, file.path, file.sha256, file.bytes)) fail(`Checksum mismatch: ${file.path}`);
   }
   const data = {} as Record<EntityName, Row[]>;
-  for (const name of names) {
+  data.road_route_segments = [];
+  for (const name of archiveNames) {
     const spec = entitySpecs[name]; const entry = files.find(file => file.path === spec.path)!;
     if (entry.bytes > MAX_JSON_BYTES) fail(`${spec.path} is too large`);
     const envelope = object(parseJson(await io.readText(root, spec.path), spec.path), spec.path);
-    if (envelope.entity !== name || envelope.format_version !== PORTABLE_FORMAT_VERSION || !Array.isArray(envelope.records)) fail(`${spec.path} has an invalid envelope`);
+    if (envelope.entity !== name || envelope.format_version !== raw.format_version || !Array.isArray(envelope.records)) fail(`${spec.path} has an invalid envelope`);
     if (envelope.records.length > MAX_RECORDS) fail(`${spec.path} contains too many records`);
     data[name] = envelope.records.map((record, index) => object(record, `${spec.path}.records[${index}]`));
   }
@@ -317,7 +350,7 @@ function validateData(manifest: PortableManifest, data: Record<EntityName, Row[]
   if (data.vaults.length !== 1 || data.vaults[0].id !== manifest.vault.id || data.vaults[0].deleted_at !== null) fail('Archive must contain exactly one active matching vault');
   const vaultId = manifest.vault.id;
   for (const name of names) {
-    if (manifest.counts?.[name] !== data[name].length) fail(`Manifest count mismatch for ${name}`);
+    if (!(manifest.format_version === 1 && name === 'road_route_segments') && manifest.counts?.[name] !== data[name].length) fail(`Manifest count mismatch for ${name}`);
     const spec = entitySpecs[name];
     for (const row of data[name]) {
       decodeRow(spec, row);
@@ -337,6 +370,24 @@ function validateData(manifest: PortableManifest, data: Record<EntityName, Row[]
   reference(data.dream_visits,'dream_id',dreamIds,'dream_visits'); reference(data.dream_visits,'stop_id',stopIds,'dream_visits');
   reference(data.reconstruction_history,'trip_id',tripIds,'reconstruction_history'); reference(data.reconstruction_history,'run_id',suggestionIds,'reconstruction_history',true);
   const days=new Map(data.trip_days.map(row=>[row.id,row])); const stops=new Map(data.stops.map(row=>[row.id,row])); const suggestions=new Map(data.reconstruction_history.map(row=>[row.id,row]));
+  ids(data.road_route_segments, 'road_route_segments');
+  uniqueActive(data.road_route_segments, ['trip_id','from_stop_id','to_stop_id'], 'road segment');
+  reference(data.road_route_segments, 'trip_id', tripIds, 'road_route_segments');
+  reference(data.road_route_segments, 'from_stop_id', stopIds, 'road_route_segments');
+  reference(data.road_route_segments, 'to_stop_id', stopIds, 'road_route_segments');
+  for (const row of data.road_route_segments) {
+    const route = portableRoad(row), a = stops.get(route.input.fromStopId)!, b = stops.get(route.input.toStopId)!;
+    if (a.trip_id !== route.tripId || b.trip_id !== route.tripId) fail('Road route crosses Trip boundaries');
+    if (!route.stale && row.deleted_at === null) {
+      const ordered = data.stops.filter(s => s.trip_id === route.tripId && s.deleted_at === null).sort((a,b) => Number(a.position)-Number(b.position));
+      if (ordered[ordered.findIndex(s => s.id === a.id)+1]?.id !== b.id || a.visit_confirmed !== true || b.visit_confirmed !== true) fail('Current road route has stale Stop order');
+      for (const [stop, point] of [[a,route.input.from],[b,route.input.to]] as const) {
+        const place = data.places.find(p => p.id === stop.place_id);
+        const actual = place && place.deleted_at === null ? canonicalCoordinate(place.latitude as number|null,place.longitude as number|null) : null;
+        if (!actual || !sameCoordinate(actual,point)) fail('Current road route has stale coordinates');
+      }
+    }
+  }
   for(const stop of data.stops)if(stop.day_id!==null&&days.get(stop.day_id)?.trip_id!==stop.trip_id)fail('Stop section belongs to a different Trip');
   for(const placement of data.trip_media){
     if(placement.day_id!==null&&days.get(placement.day_id)?.trip_id!==placement.trip_id)fail('Photo section belongs to a different Trip');
@@ -355,7 +406,7 @@ function validateData(manifest: PortableManifest, data: Record<EntityName, Row[]
     const file=manifest.files.find(item=>item.path===path && item.kind==='media-original');
     if(!file || file.sha256!==media.sha256 || file.bytes!==media.byte_size) fail(`Original media entry is missing for ${String(media.id)}`);
   }
-  for(const name of names)if(manifest.files.find(item=>item.path===entitySpecs[name].path)?.kind!=='data')fail(`Invalid file kind for ${entitySpecs[name].path}`);
+  for(const name of names)if(!(manifest.format_version===1&&name==='road_route_segments')&&manifest.files.find(item=>item.path===entitySpecs[name].path)?.kind!=='data')fail(`Invalid file kind for ${entitySpecs[name].path}`);
   if(manifest.files.filter(item=>item.kind==='media-original').length!==data.media.length)fail('Archive contains unexpected original media entries');
   if (manifest.media_count !== data.media.length || manifest.total_media_bytes !== data.media.reduce((sum,row)=>sum+Number(row.byte_size),0)) fail('Manifest media summary mismatch');
 }
@@ -421,6 +472,9 @@ export async function restorePortableArchive(input: { database: LocalDatabase; c
       for(const row of verified.data.chapters) if(row.deleted_at!==null) await connection.runAsync('UPDATE chapters SET deleted_at=? WHERE id=? AND vault_id=?',sqlValue(row,'deleted_at'),sqlValue(row,'id'),archiveId);
       for(const row of verified.data.places) if(row.deleted_at!==null) await connection.runAsync('UPDATE places SET deleted_at=? WHERE id=? AND vault_id=?',sqlValue(row,'deleted_at'),sqlValue(row,'id'),archiveId);
       for(const row of verified.data.trips) if(row.deleted_at!==null) await connection.runAsync('UPDATE trips SET deleted_at=? WHERE id=? AND vault_id=?',sqlValue(row,'deleted_at'),sqlValue(row,'id'),archiveId);
+      // Insert after Stop/Place/trip tombstones settle so restore triggers do not
+      // change the exported invalidation state. Full validation precedes writes.
+      await insertRows(connection,'road_route_segments',verified.data.road_route_segments);
       // Search is derived local state: never trust or import index internals.
       // Rebuild once from the final canonical/tombstone state before activation.
       await rebuildSearchIndex(connection,archiveId,String(vault.updated_at));

@@ -60,7 +60,8 @@ export function fitTripCamera(points: readonly Coordinate[], width = 320, height
   }
   const span = 360 - gap;
   const ys = points.map(p => mercatorY(p[1]));
-  const north = Math.min(...ys), south = Math.max(...ys);
+  // Road geometry can contain many vertices; avoid overflowing the JS argument stack.
+  const north = ys.reduce((a,b) => Math.min(a,b),Infinity), south = ys.reduce((a,b) => Math.max(a,b),-Infinity);
   const center: Coordinate = [((start + span / 2 + 180) % 360) - 180,
     Math.atan(Math.sinh(Math.PI * (1 - 2 * (north + south) / 2))) * 180 / Math.PI];
   const zoom = Math.min(11,

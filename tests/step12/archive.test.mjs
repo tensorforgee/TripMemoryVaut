@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import { fixture } from '../step1/sqlite-harness.mjs';
 import { createPortableExport, inspectPortableRestore, publishPortableExport, restorePortableArchive } from '../../.expo/step1-tests/services/archive/portable.js';
 import { mediaPath } from '../../.expo/step1-tests/core/media/files.js';
+import { OrsCredentialStore } from '../../.expo/step1-tests/features/routing-credentials/credential-store.js';
 
 class NodeIO {
   async createRoot(root){await mkdir(root,{recursive:false});}
@@ -65,13 +66,31 @@ async function exported(t){const f=await fixture(t);const io=new NodeIO();const 
 async function rewriteManifest(io,root,mutate){const manifest=JSON.parse(await io.readText(root,'manifest.json'));mutate(manifest);const text=JSON.stringify(manifest,null,2)+'\n';await io.writeText(root,'manifest.json',text);await io.writeText(root,'COMPLETE.json',JSON.stringify({manifest_sha256:await io.sha256Text(text)},null,2)+'\n');}
 async function rewriteData(io,root,path,mutate){const value=JSON.parse(await io.readText(root,path));mutate(value);const text=JSON.stringify(value,null,2)+'\n';await io.writeText(root,path,text);await rewriteManifest(io,root,m=>{const file=m.files.find(x=>x.path===path);file.bytes=Buffer.byteLength(text);file.sha256=createHash('sha256').update(text).digest('hex');});}
 
-test('format v1 export is deterministic, structured, complete and excludes device/import state',async t=>{
+test('format v2 export is deterministic, structured, complete and excludes device/import state',async t=>{
   const x=await exported(t);const second=join(dirname(x.f.path),'stage-two');const again=await createPortableExport({database:x.f.database,vaultId:x.f.vault.id,io:x.io,mediaFiles:x.sourceMedia,stagingRoot:second,now:()=>stamp});
   assert.equal(await x.io.readText(x.staging,'manifest.json'),await x.io.readText(second,'manifest.json'));
-  assert.equal(again.manifest.format_version,1);assert.equal(again.manifest.vault.id,x.f.vault.id);assert.equal(again.manifest.counts.trips,2);assert.equal(again.manifest.counts.reconstruction_history,2);
+  assert.equal(again.manifest.format_version,2);assert.equal(again.manifest.vault.id,x.f.vault.id);assert.equal(again.manifest.counts.trips,2);assert.equal(again.manifest.counts.reconstruction_history,2);
   const trips=JSON.parse(await x.io.readText(x.staging,'data/trips.json')).records;assert.deepEqual(trips.find(r=>r.id===x.ids.trip).dates,approximate);assert.ok(trips.find(r=>r.id===x.ids.trashedTrip).deleted_at);
   const media=await readFile(join(x.staging,'media','originals',x.ids.hash.slice(0,2),`${x.ids.hash}.original`));assert.deepEqual(media,x.ids.bytes);assert.equal(createHash('sha256').update(media).digest('hex'),x.ids.hash);
   const all=(await Promise.all(again.manifest.files.filter(f=>f.kind==='data').map(f=>x.io.readText(second,f.path)))).join('');assert.doesNotMatch(all,/source_uri|staging_relative_path|cache|content:\/\//);
+});
+
+test('routing credential is absent from SQLite and every portable export payload',async t=>{
+  const secret='eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhcmNoaXZlLWxlYWstdGVzdCJ9.secret-signature-123456';
+  const secureValues=new Map();
+  const secureStorage={getItemAsync:async key=>secureValues.get(key)??null,setItemAsync:async(key,value)=>{secureValues.set(key,value);},deleteItemAsync:async key=>{secureValues.delete(key);}};
+  await new OrsCredentialStore(secureStorage).save(secret);
+  const x=await exported(t);
+  const textFiles=x.result.manifest.files.filter(file=>file.kind!=='media-original');
+  const payloads=[await x.io.readText(x.staging,'manifest.json'),await x.io.readText(x.staging,'COMPLETE.json'),
+    ...await Promise.all(textFiles.map(file=>x.io.readText(x.staging,file.path)))];
+  assert.doesNotMatch(payloads.join('\n'),new RegExp(secret));
+  const tables=await x.f.connection.getAllAsync("SELECT name FROM sqlite_master WHERE type='table'");
+  for(const {name} of tables){
+    const rows=await x.f.connection.getAllAsync(`SELECT * FROM "${name.replaceAll('"','""')}"`);
+    assert.doesNotMatch(JSON.stringify(rows),new RegExp(secret),name);
+  }
+  assert.equal(await new OrsCredentialStore(secureStorage).read(),secret);
 });
 
 test('round trip into a fresh vault preserves IDs, relationships, uncertainty, tombstones and original bytes',async t=>{

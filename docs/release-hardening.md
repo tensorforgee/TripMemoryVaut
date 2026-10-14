@@ -1,5 +1,12 @@
 # Android release hardening
 
+**4 October 2026 / Trip Map V2:** the optional HTTPS basemap now requires INTERNET
+in release. The tracked prebuild overlay retains it, and the artifact verifier
+expects it alongside ACCESS_NETWORK_STATE and the signature receiver permission.
+All other restrictions remain. The builds/signature/permission results below are
+historical artifacts that predate V2; rebuild before validating V2 online maps.
+See [Trip Map V2](trip-map-v2.md) for configuration and runtime status.
+
 Scope: production builds and verification of the existing Steps 0–14. No domain,
 migration, dependency-version, lockfile, or product-feature changes.
 
