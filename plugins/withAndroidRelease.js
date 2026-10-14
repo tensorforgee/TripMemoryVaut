@@ -11,10 +11,10 @@ function addNativePaths(contents) {
   return contents.includes(nativeLine) ? contents : `${contents.trimEnd()}\n\n${nativeLine}\n`;
 }
 
-// Release-only overlay: development builds still need their Metro connection.
+// Release-only overlay. HTTPS basemap tiles now require INTERNET in release.
 // ACCESS_NETWORK_STATE remains for the native image/map connectivity monitors.
 const releaseManifest = `<manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
-  <uses-permission android:name="android.permission.INTERNET" tools:node="remove" />
+  <uses-permission android:name="android.permission.INTERNET" />
   <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" tools:node="remove" />
   <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" tools:node="remove" />
   <uses-permission android:name="android.permission.VIBRATE" tools:node="remove" />

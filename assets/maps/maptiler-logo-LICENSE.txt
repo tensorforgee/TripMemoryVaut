@@ -1,0 +1,4 @@
+Official MapTiler attribution logo, downloaded 12 October 2026:
+https://api.maptiler.com/resources/logo.svg
+MapTiler trademark; used solely to attribute MapTiler basemaps.
+Attribution instructions: https://docs.maptiler.com/guides/map-design/attribution/add-attribution/

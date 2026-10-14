@@ -49,6 +49,11 @@ export default function SettingsScreen(){
   return <SafeAreaView style={styles.page} edges={['bottom','left','right']}><ScrollView contentContainerStyle={styles.content}>
     <Text style={styles.heading}>Settings</Text><Text style={styles.text}>Understand and safely maintain this local Trip Memory Vault.</Text>
 
+    <Section title="Routing">
+      <Text style={styles.text}>Configure your own OpenRouteService credential. Saving a key does not enable or start route generation.</Text>
+      <Action title="Open routing settings" disabled={!!busy} onPress={()=>router.push('/settings/routing')}/>
+    </Section>
+
     <Section title="Archive">
       <Text style={styles.text}>Export creates a portable backup with canonical data and app-owned original photos.</Text>
       <Action title="Export vault" disabled={!!busy} onPress={()=>router.push('/archive')}/>

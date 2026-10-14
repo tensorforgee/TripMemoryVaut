@@ -33,7 +33,7 @@ export default function RootLayout() {
       <Stack.Screen name="trips/[tripId]/index" options={{ title: 'Trip', header: tripHeader }} />
       <Stack.Screen name="trips/[tripId]/edit" options={{ title: 'Edit trip', header: tripHeader }} />
       <Stack.Screen name="trips/[tripId]/route" options={{ title: 'Route / Stops', header: tripHeader }} />
-      <Stack.Screen name="trips/[tripId]/map" options={{ title: 'Trip Map', header: tripHeader }} />
+      <Stack.Screen name="trips/[tripId]/map" options={{ title: 'Trip Map', headerShown: false }} />
       <Stack.Screen name="trips/[tripId]/timeline" options={{ title: 'Timeline', header: tripHeader }} />
       <Stack.Screen name="trips/[tripId]/photos" options={{ title: 'Photos', header: tripHeader }} />
       <Stack.Screen name="trips/[tripId]/reconstruct" options={{ title: 'Reconstruction', header: tripHeader }} />
@@ -48,6 +48,7 @@ export default function RootLayout() {
       <Stack.Screen name="dreams/[dreamId]" options={{ title: 'Dream', header: tripHeader }} />
       <Stack.Screen name="archive" options={{ title: 'Archive & restore', header: tripHeader }} />
       <Stack.Screen name="settings/index" options={{ title: 'Settings', header: tripHeader }} />
+      <Stack.Screen name="settings/routing" options={{ title: 'Routing', header: tripHeader }} />
       <Stack.Screen name="search" options={{ title: 'Search', header: tripHeader }} />
       <Stack.Protected guard={__DEV__}>
       <Stack.Screen name="database-test" options={{ title: 'Database verification', header: tripHeader }} />

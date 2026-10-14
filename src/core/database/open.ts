@@ -5,6 +5,7 @@ import { migrateDatabase, type MigrationServices } from './migrate';
 import { getOrCreateVault, type Vault } from './vault';
 import { TripRepository } from '../../features/trips/repository';
 import { RouteRepository } from '../../features/route/repository';
+import { RoadRouteRepository } from '../../features/road-route/repository';
 import { TimelineRepository } from '../../features/timeline/repository';
 import { CompanionRepository } from '../../features/companions/repository';
 import { ChapterRepository } from '../../features/chapters/repository';
@@ -44,6 +45,7 @@ export type VaultDatabase = {
   vault: Vault;
   trips: TripRepository;
   routes: RouteRepository;
+  roadRoutes: RoadRouteRepository;
   timeline: TimelineRepository;
   companions: CompanionRepository;
   chapters: ChapterRepository;
@@ -60,6 +62,7 @@ function createVaultHandle(databaseName: string, database: LocalDatabase, vault:
   return {
     databaseName, database, vault, trips: new TripRepository(database, vault.id, randomUUID), routes: new RouteRepository(database, vault.id, randomUUID),
     timeline: new TimelineRepository(database, vault.id, randomUUID),
+    roadRoutes: new RoadRouteRepository(database, vault.id, randomUUID),
     companions: new CompanionRepository(database, vault.id, randomUUID), chapters: new ChapterRepository(database, vault.id, randomUUID),
     life: new TravelLifeRepository(database, vault.id),
     dreams: new DreamRepository(database, vault.id, randomUUID),

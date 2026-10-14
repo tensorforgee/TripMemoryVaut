@@ -9,9 +9,10 @@ import { reconstructionProvenanceSchema } from './migrations/0007-reconstruction
 import { companionsChaptersSchema } from './migrations/0008-companions-chapters';
 import { dreamPlacesSchema } from './migrations/0009-dream-places';
 import { searchSchema } from './migrations/0010-search';
+import { roadRoutesSchema } from './migrations/0011-road-routes';
 
 export type Migration = { readonly version: number; readonly sql: string };
-export const migrations: readonly Migration[] = [{ version: 1, sql: initialSchema }, { version: 2, sql: placesStopsSchema }, { version: 3, sql: tripDaysSchema }, { version: 4, sql: mediaSchema }, { version: 5, sql: mediaGuardsSchema }, { version: 6, sql: reconstructionSchema }, { version: 7, sql: reconstructionProvenanceSchema }, { version: 8, sql: companionsChaptersSchema }, { version: 9, sql: dreamPlacesSchema }, { version: 10, sql: searchSchema }];
+export const migrations: readonly Migration[] = [{ version: 1, sql: initialSchema }, { version: 2, sql: placesStopsSchema }, { version: 3, sql: tripDaysSchema }, { version: 4, sql: mediaSchema }, { version: 5, sql: mediaGuardsSchema }, { version: 6, sql: reconstructionSchema }, { version: 7, sql: reconstructionProvenanceSchema }, { version: 8, sql: companionsChaptersSchema }, { version: 9, sql: dreamPlacesSchema }, { version: 10, sql: searchSchema }, { version: 11, sql: roadRoutesSchema }];
 
 export interface MigrationBackup {
   path: string;

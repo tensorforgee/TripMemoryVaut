@@ -34,7 +34,7 @@ if ($app.GetAttribute('debuggable', $ns) -eq 'true' -or
     $app.GetAttribute('allowBackup', $ns) -ne 'false' -or
     $app.GetAttribute('usesCleartextTraffic', $ns) -ne 'false') { throw 'Unsafe release manifest flags.' }
 $permissions = @($root.SelectNodes('uses-permission | uses-permission-sdk-23') | ForEach-Object { $_.GetAttribute('name', $ns) } | Sort-Object -Unique)
-$expectedPermissions = @('android.permission.ACCESS_NETWORK_STATE', "$($config.android.package).DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION")
+$expectedPermissions = @('android.permission.ACCESS_NETWORK_STATE', 'android.permission.INTERNET', "$($config.android.package).DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION")
 if (Compare-Object $expectedPermissions $permissions) { throw 'Unexpected release permissions.' }
 if (($app.SelectNodes('activity | activity-alias') | ForEach-Object { $_.GetAttribute('name', $ns) }) -match 'expo.modules.dev(launcher|menu)') { throw 'Development activity in release.' }
 "Bundle identity: $($config.android.package), version $($config.version) ($($config.android.versionCode)); minSdk 24 / targetSdk 36"

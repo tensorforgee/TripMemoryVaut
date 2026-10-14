@@ -49,15 +49,18 @@ test('all verification routes are production-inaccessible at the navigation boun
   assert.equal(config.android.package, 'com.tripmemoryvault.app');
   assert.equal(config.android.versionCode, 1);
   assert.equal(config.android.allowBackup, false);
+  assert.deepEqual(config.plugins.find(p => Array.isArray(p) && p[0] === 'expo-secure-store')[1], { configureAndroidBackup: true });
 });
 
-test('release overlay removes unused network/overlay/haptic permissions and disallows cleartext', () => {
-  for (const permission of ['INTERNET', 'ACCESS_WIFI_STATE', 'SYSTEM_ALERT_WINDOW', 'VIBRATE']) {
+test('release permits HTTPS basemaps, removes unused permissions and disallows cleartext', () => {
+  assert.match(releaseManifest, /<uses-permission android:name="android.permission.INTERNET" \/>/);
+  assert.doesNotMatch(releaseManifest, /android.permission.INTERNET" tools:node="remove"/);
+  for (const permission of ['ACCESS_WIFI_STATE', 'SYSTEM_ALERT_WINDOW', 'VIBRATE']) {
     assert.ok(releaseManifest.includes(`android.permission.${permission}" tools:node="remove"`));
   }
   assert.match(releaseManifest, /usesCleartextTraffic="false"/);
   const permissions = JSON.parse(read('app.json')).expo.android.blockedPermissions;
-  for (const permission of ['CAMERA', 'RECORD_AUDIO', 'ACCESS_FINE_LOCATION', 'ACCESS_COARSE_LOCATION',
+  for (const permission of ['CAMERA', 'RECORD_AUDIO', 'USE_BIOMETRIC', 'USE_FINGERPRINT', 'ACCESS_FINE_LOCATION', 'ACCESS_COARSE_LOCATION',
     'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE', 'READ_MEDIA_IMAGES', 'READ_MEDIA_VIDEO']) {
     assert.ok(permissions.includes(`android.permission.${permission}`));
   }
