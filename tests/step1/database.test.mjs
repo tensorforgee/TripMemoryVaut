@@ -183,3 +183,26 @@ test('deleted migration ledger rows are detected using SQLite user_version', asy
   await assert.rejects(migrateDatabase(f.database, f.services), /history disagree/);
   assert.equal((await f.connection.getFirstAsync('SELECT count(*) AS n FROM vaults')).n, 1);
 });
+
+test('close drains an active transaction and queued reads, then rejects stale repository work', async t => {
+  const f = await fixture(t);
+  const trip = await f.trips.createTripDraft({ title: 'Before close' });
+  let release, entered;
+  const held = new Promise(resolve => { release = resolve; });
+  const started = new Promise(resolve => { entered = resolve; });
+  const write = f.database.transaction(async c => {
+    await c.runAsync('UPDATE trips SET title=? WHERE id=?','Committed before close',trip.id);
+    entered(); await held;
+  });
+  await started;
+  const read = f.trips.getTripById(trip.id);
+  const close = f.database.close();
+  const stale = assert.rejects(f.trips.listTrips(), /closed/);
+  assert.equal(f.connection.closed,false);
+  release(); await write;
+  assert.equal((await read).title,'Committed before close');
+  await close; await stale;
+  const reopened = new NodeConnection(f.path);
+  try { assert.equal((await reopened.getFirstAsync('SELECT title FROM trips WHERE id=?',trip.id)).title,'Committed before close'); }
+  finally { await reopened.closeAsync(); }
+});

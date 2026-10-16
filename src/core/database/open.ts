@@ -17,12 +17,19 @@ import { resetVaultContents } from '../../features/settings/reset-database';
 
 // One persistent connection per open vault, configured before migrations or queries.
 // A rejected initialization must be shown as recovery/error, never an empty vault.
+// Expo's default sqlite3_next_stmt sweep also finalizes FTS5-owned statements.
+// FTS5 finalizes those again during sqlite3_close (native double free). Our small
+// SqlConnection surface uses Expo's run/get helpers, which await their own
+// statement finalization in finally; LocalDatabase drains queued work before close.
+// Leave FTS5's internal statements to SQLite, including on migration snapshots.
+export const vaultSQLiteOptions = { useNewConnection: true, finalizeUnusedStatementsBeforeClosing: false } as const;
+
 export function sqliteMigrationServices(connection: SQLiteDatabase, databaseName: string): MigrationServices {
   return {
     checksum: sql => digestStringAsync(CryptoDigestAlgorithm.SHA256, sql),
     backup: async () => {
       const backupName = `${databaseName}.before-migration-${randomUUID()}.sqlite`;
-      const snapshot = await openDatabaseAsync(backupName, { useNewConnection: true });
+      const snapshot = await openDatabaseAsync(backupName, vaultSQLiteOptions);
       try {
         await configureConnection(snapshot);
         await backupDatabaseAsync({ sourceDatabase: connection, destDatabase: snapshot });
@@ -84,7 +91,7 @@ export function openVaultDatabase(databaseName = 'vault.sqlite'): Promise<VaultD
 }
 
 async function initialize(databaseName: string): Promise<VaultDatabase> {
-  const connection = await openDatabaseAsync(databaseName, { useNewConnection: true });
+  const connection = await openDatabaseAsync(databaseName, vaultSQLiteOptions);
   const database = new LocalDatabase(connection);
   try {
     await configureConnection(connection);
