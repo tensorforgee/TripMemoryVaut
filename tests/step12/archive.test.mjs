@@ -3,7 +3,9 @@ import test from 'node:test';
 import { createHash, randomUUID } from 'node:crypto';
 import { cp, mkdir, readFile, rm, stat, unlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
-import { fixture } from '../step1/sqlite-harness.mjs';
+import { fixture, NodeConnection } from '../step1/sqlite-harness.mjs';
+import { configureConnection, LocalDatabase } from '../../.expo/step1-tests/core/database/database.js';
+import { getOrCreateVault } from '../../.expo/step1-tests/core/database/vault.js';
 import { createPortableExport, inspectPortableRestore, publishPortableExport, restorePortableArchive } from '../../.expo/step1-tests/services/archive/portable.js';
 import { mediaPath } from '../../.expo/step1-tests/core/media/files.js';
 import { OrsCredentialStore } from '../../.expo/step1-tests/features/routing-credentials/credential-store.js';
@@ -134,4 +136,98 @@ test('failed/interrupted restore and nonempty-vault rejection leave existing dat
   const existing=await fresh.trips.createTripDraft({title:'Do not overwrite'});destination.failCopy=false;
   await assert.rejects(restorePortableArchive({database:fresh.database,currentVaultId:fresh.vault.id,io:x.io,archiveRoot:x.staging,destinationMedia:destination,newStagingId:randomUUID}),/fresh, empty vault/);
   assert.equal((await fresh.trips.getTripById(existing.id)).title,'Do not overwrite');
+});
+
+test('repeated fresh restores remain identical through FTS use, close and reopen', async t => {
+  const x = await exported(t);
+  for (let cycle = 0; cycle < 3; cycle++) {
+    const fresh = await fixture(t);
+    const files = new MediaFiles(join(dirname(fresh.path), 'restored-media'));
+    await restorePortableArchive({database:fresh.database,currentVaultId:fresh.vault.id,io:x.io,archiveRoot:x.staging,destinationMedia:files,newStagingId:randomUUID});
+    await fresh.database.run(async c => {
+      assert.ok((await c.getAllAsync("SELECT rowid FROM search_fts WHERE search_fts MATCH 'College'")).length);
+      await c.runAsync("INSERT INTO search_fts(search_fts,rank) VALUES('integrity-check',1)");
+    });
+    await fresh.database.close();
+    const connection = new NodeConnection(fresh.path);
+    try {
+      await configureConnection(connection);
+      const db = new LocalDatabase(connection);
+      assert.equal((await getOrCreateVault(db,randomUUID)).id,x.f.vault.id);
+      assert.equal((await connection.getFirstAsync('PRAGMA integrity_check')).integrity_check,'ok');
+      assert.deepEqual(await connection.getAllAsync('PRAGMA foreign_key_check'),[]);
+      assert.deepEqual(await readFile(files.uri(x.ids.relative)),x.ids.bytes);
+      const reexport = join(dirname(fresh.path),'reexport');
+      await createPortableExport({database:db,vaultId:x.f.vault.id,io:x.io,mediaFiles:files,stagingRoot:reexport,now:()=>stamp});
+      assert.equal(await x.io.readText(reexport,'manifest.json'),await x.io.readText(x.staging,'manifest.json'));
+      await db.close();
+    } finally { await connection.closeAsync(); }
+  }
+});
+
+for (const boundary of ['insert', 'commit']) test(`restore ${boundary} failure rolls back; verified orphan original survives and retries after reopen`, async t => {
+  const x = await exported(t), fresh = await fixture(t);
+  const files = new MediaFiles(join(dirname(fresh.path),'restored-media'));
+  const originalRun = fresh.connection.runAsync.bind(fresh.connection);
+  const originalExec = fresh.connection.execAsync.bind(fresh.connection);
+  let injected = false;
+  fresh.connection.runAsync = async (sql,...args) => {
+    if (boundary === 'insert' && sql.startsWith('INSERT INTO trip_media(')) { injected = true; throw Error('INJECTED_INSERT'); }
+    return originalRun(sql,...args);
+  };
+  fresh.connection.execAsync = async sql => {
+    if (boundary === 'commit' && sql === 'COMMIT') { injected = true; throw Error('INJECTED_COMMIT'); }
+    return originalExec(sql);
+  };
+  await assert.rejects(restorePortableArchive({database:fresh.database,currentVaultId:fresh.vault.id,io:x.io,archiveRoot:x.staging,destinationMedia:files,newStagingId:randomUUID}),/INJECTED_/);
+  assert.equal(injected,true);
+  fresh.connection.runAsync = originalRun; fresh.connection.execAsync = originalExec;
+  assert.equal((await fresh.connection.getFirstAsync('SELECT id FROM vaults')).id,fresh.vault.id);
+  assert.equal((await fresh.connection.getFirstAsync('SELECT count(*) n FROM trips')).n,0);
+  assert.equal((await fresh.connection.getFirstAsync('SELECT count(*) n FROM search_documents')).n,0);
+  assert.equal((await fresh.connection.getFirstAsync('SELECT count(*) n FROM local_media_files')).n,0);
+  assert.ok(files.removed.length);
+  for (const path of files.removed) assert.equal(await files.exists(path),false);
+  assert.deepEqual(await readFile(files.uri(x.ids.relative)),x.ids.bytes);
+  await fresh.database.close();
+  const connection = new NodeConnection(fresh.path);
+  try {
+    await configureConnection(connection);
+    const db = new LocalDatabase(connection);
+    assert.equal((await getOrCreateVault(db,randomUUID)).id,fresh.vault.id);
+    files.failCopy = true; // Retry must verify/reuse the complete orphan, not recopy it.
+    await restorePortableArchive({database:db,currentVaultId:fresh.vault.id,io:x.io,archiveRoot:x.staging,destinationMedia:files,newStagingId:randomUUID});
+    assert.equal((await connection.getFirstAsync('PRAGMA integrity_check')).integrity_check,'ok');
+    assert.deepEqual(await connection.getAllAsync('PRAGMA foreign_key_check'),[]);
+    await connection.runAsync("INSERT INTO search_fts(search_fts,rank) VALUES('integrity-check',1)");
+    assert.equal((await getOrCreateVault(db,randomUUID)).id,x.f.vault.id);
+    await db.close();
+  } finally { await connection.closeAsync(); }
+});
+
+test('legacy format v1 restores through the current schema and survives FTS close/reopen', async t => {
+  const x = await exported(t), fresh = await fixture(t);
+  const legacy = join(dirname(x.f.path),'legacy-v1');
+  await cp(x.staging,legacy,{recursive:true});
+  const manifest = JSON.parse(await x.io.readText(legacy,'manifest.json'));
+  for (const file of manifest.files.filter(file=>file.kind==='data' && file.path!=='data/road-route-segments.json')) {
+    await rewriteData(x.io,legacy,file.path,data=>{data.format_version=1;});
+  }
+  await rewriteManifest(x.io,legacy,m=>{
+    m.format_version=1;m.schema_version=10;delete m.counts.road_route_segments;
+    m.files=m.files.filter(file=>file.path!=='data/road-route-segments.json');
+  });
+  await unlink(join(legacy,'data/road-route-segments.json'));
+  const files = new MediaFiles(join(dirname(fresh.path),'legacy-media'));
+  await restorePortableArchive({database:fresh.database,currentVaultId:fresh.vault.id,io:x.io,archiveRoot:legacy,destinationMedia:files,newStagingId:randomUUID});
+  await fresh.database.close();
+  const connection = new NodeConnection(fresh.path);
+  try {
+    assert.equal((await connection.getFirstAsync('SELECT id FROM vaults')).id,x.f.vault.id);
+    assert.equal((await connection.getFirstAsync('SELECT count(*) n FROM road_route_segments')).n,0);
+    assert.equal((await connection.getFirstAsync('PRAGMA user_version')).user_version,11);
+    assert.equal((await connection.getFirstAsync('PRAGMA integrity_check')).integrity_check,'ok');
+    assert.deepEqual(await connection.getAllAsync('PRAGMA foreign_key_check'),[]);
+    assert.deepEqual(await readFile(files.uri(x.ids.relative)),x.ids.bytes);
+  } finally { await connection.closeAsync(); }
 });
