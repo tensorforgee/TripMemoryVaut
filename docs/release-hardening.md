@@ -7,6 +7,9 @@ All other restrictions remain. The builds/signature/permission results below are
 historical artifacts that predate V2; rebuild before validating V2 online maps.
 See [Trip Map V2](trip-map-v2.md) for configuration and runtime status.
 
+**18 October 2026 / Android full lint:** see the lint follow-up at the end for the
+camera-removal false positive and the separate, invocation-only K2 workaround.
+
 Scope: production builds and verification of the existing Steps 0–14. No domain,
 migration, dependency-version, lockfile, or product-feature changes.
 
@@ -660,3 +663,126 @@ This supersedes the earlier missing-signing blocker. It is not a store rollout
 approval: independent key/credential backup, physical ARM64 runtime verification,
 Play App Signing enrollment/upload-certificate registration, production listing,
 privacy declarations and the documented API 24–27 support disclosure remain.
+
+## Android full-lint follow-up — 2026-10-16–18
+
+Scope: `fix/android-release-lint`; the starting checkout was clean. No dependency,
+lockfile, map, routing, SQLite restore, or UI change.
+
+### Two independent failures
+
+1. Default `:app:lintRelease` fails at
+   `:react-native-worklets:lintAnalyzeRelease` with
+   `Cannot find a KaModule for the VirtualFile`. The stack goes through
+   `KotlinStandaloneProjectStructureProvider`, `SymbolKotlinAsJavaSupport`, and
+   `UastGradleVisitor.visitBuildScript`. Worklets applies Kotlin Gradle scripts
+   (`fix-prefab.gradle.kts` and `generate-stub-pch.gradle.kts`). This is the K2 UAST
+   build-script analyzer failure described in
+   [Android issue 430991549](https://issuetracker.google.com/issues/430991549),
+   independent of the app manifest and Kotlin compilation.
+2. With K1 UAST, full release lint reports
+   `PermissionImpliesUnsupportedChromeOsHardware` at
+   `android/app/src/main/AndroidManifest.xml:4`:
+   `Permission exists without corresponding hardware <uses-feature android:name="android.hardware.camera" required="false"> tag`.
+   The cited element is **removing** `android.permission.CAMERA`, using
+   `tools:node="remove"`. The merged release manifest has no CAMERA permission.
+   Inspection of the installed `lint-checks-31.12.0.jar` with `javap -c -p`
+   confirms `ChromeOsDetector.visitElement` collects permission names without
+   checking the removal marker. This is a lint detector false positive in the
+   analyzer bundled with AGP 8.12.0, not an invalid manifest or missing feature.
+
+### Scoped fix and analyzer workaround
+
+`plugins/withAndroidRelease.js` annotates only the CAMERA removal element with
+`tools:ignore="PermissionImpliesUnsupportedChromeOsHardware"` during prebuild.
+The annotation requires both that permission name and `tools:node="remove"`;
+it preserves other annotations and is idempotent. Actual permission requests
+are not annotated. `app.json` continues to block CAMERA and the other sensitive
+permissions; no hardware declaration or permission is added. The AAB verifier's
+exact permission allowlist remains the independent privacy gate.
+
+This uses Android's documented
+[element-scoped XML lint suppression](https://developer.android.com/studio/write/lint#configure-lint-checking-in-xml).
+There is no lint baseline, global issue disable, `abortOnError=false`, skipped
+lint task, or reduced check list. Storage-removal and other existing warnings
+remain visible.
+
+For the pinned AGP 8.12.0 / lint 31.12.0 stack, use K1 UAST **only for the lint
+invocation** below. This selects the analyzer frontend; it does not disable lint
+or change the Kotlin compiler. Do not put the flag in global Gradle properties.
+PowerShell requires quoting this dotted `-P` argument; unquoted, it can create an
+`android` string project property and fail before lint (`No such property:
+buildTypes for class: java.lang.String`).
+
+```powershell
+$env:JAVA_HOME = Join-Path $env:USERPROFILE '.gradle/jdks/eclipse_adoptium-17-amd64-windows.2'
+$env:Path = "$env:JAVA_HOME/bin;$env:Path"
+$env:NODE_ENV = 'production'
+$env:EXPO_NO_TYPESCRIPT_SETUP = '1'
+pnpm exec expo prebuild --platform android --no-install
+.\android\gradlew.bat -p android :app:lintRelease '-Pandroid.lint.useK2Uast=false' --no-daemon --no-watch-fs --no-parallel --max-workers=1 '-Dorg.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=512m' --console=plain
+```
+
+After a separately scoped AGP/lint upgrade, rerun without the K1 flag and remove
+the workaround when the Worklets script analysis passes. Recheck the camera
+removal without its annotation before removing that independent workaround.
+Neither issue justifies changing application permissions or upgrading the
+native dependency matrix in this fix.
+
+### Verification evidence
+
+Evidence is retained locally under ignored `.expo/android-release-lint/`:
+
+- `baseline-k2.log`: default full release lint reproduces the Worklets K2 crash
+  (2m 39s). `baseline-k1.log`: K1 reaches the camera removal error (2m 10s),
+  **1 error / 28 warnings**. The source manifest and report are saved alongside.
+- `prebuild.log` and `prebuild-repeat.log`: two regenerated Android projects
+  produce the same annotated main manifest. No generated Android files are
+  tracked. Prebuild also reapplies the already configured secure-store backup
+  exclusion resources; `allowBackup=false` remains enforced.
+- `typecheck.log` and `tests-final.log`: `pnpm typecheck`, test TypeScript
+  compilation, and the release/Step 14 suites pass: **16 tests, no failures or
+  skips**. The new regression verifies removal preservation, idempotence,
+  existing annotation preservation, and no suppression on actual requests.
+- `lint-fixed.log` and `lint-after.{txt,xml}`: **full `:app:lintRelease` passes**
+  with the invocation-only K1 flag: **0 errors / 27 warnings**, 14m 2s,
+  821 tasks (359 executed, 462 up-to-date). This is the full release task,
+  not only the fatal-issue `lintVitalRelease` packaging check. Existing storage,
+  resource/icon, dependency-version and API-attribute warnings remain visible.
+- The merged release permission set is unchanged: INTERNET,
+  ACCESS_NETWORK_STATE and the package signature receiver permission only.
+  CAMERA is absent; backup and cleartext remain disabled.
+
+The first post-prebuild attempt stopped before lint when Clang could not open
+NDK headers during the armeabi-v7a Worklets build (`unspecified system_category
+error`). Both headers were present and readable; the identical retry completed
+all native prerequisites and full lint. No source/configuration change was made
+for that host file-open failure, whose underlying cause is unconfirmed. Evidence:
+`lint-native-file-open-failure.log`. The initial sandboxed JAR fixture test also
+needed normal JDK temporary-file access; all tests passed with that access.
+
+`signed-build.log`: the existing `android-upload-signing.ps1 -Action Build`
+wrapper passed `:app:bundleRelease :app:assembleRelease` with all four ABIs,
+**14m 5s**, 879 tasks (191 executed, 688 up-to-date). This ordinary signed build
+did not need the full-lint K1 flag. AAB verification matched the independently
+stored upload certificate across **all 1,419 payload entries**; bundletool
+validation, exact permission allowlist, disabled backup/cleartext, Hermes
+bytecode (3,347,760 bytes), 25 native libraries per ABI, matching ELF machines,
+16 KiB 64-bit LOAD alignment, and `PAGE_ALIGNMENT_16K` all pass.
+
+`apk-verification.log`: APK signature matches the same expected upload
+certificate; `zipalign -c -P 16 4` and the exact permission allowlist pass.
+
+| Artifact | SHA-256 |
+| --- | --- |
+| `android/app/build/outputs/bundle/release/app-release.aab` | `43067B0AB9511D3F5B6EE19A0B7A5A05F266291A1C31A8B048C35993BA06A25B` |
+| `android/app/build/outputs/apk/release/app-release.apk` | `B6A4E1406123A0E0C511230CA394040697AD17D0E911DD8D329E88D26490C3FC` |
+
+`git diff --check` passes. Only this document, the prebuild plugin and its release
+regression test changed. No commit, push, device installation or runtime behavior
+change was made. There is no remaining blocker to the documented full release
+lint command. Default K2 full analysis still requires the temporary workaround;
+27 nonfatal lint warnings remain. Existing store/runtime release gates are
+outside this lint verification.
+
+**PASS — ANDROID RELEASE LINT VERIFIED**

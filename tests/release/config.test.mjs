@@ -4,7 +4,7 @@ import { createRequire } from 'node:module';
 import test from 'node:test';
 
 const require = createRequire(import.meta.url);
-const { addSigningConfiguration, addNativePaths, releaseManifest } = require('../../plugins/withAndroidRelease');
+const { addSigningConfiguration, addNativePaths, releaseManifest, annotateRemovedCameraPermission } = require('../../plugins/withAndroidRelease');
 const read = name => fs.readFileSync(new URL(`../../${name}`, import.meta.url), 'utf8');
 
 test('Settings does not label standalone releases as development when native build metadata is absent', () => {
@@ -64,4 +64,24 @@ test('release permits HTTPS basemaps, removes unused permissions and disallows c
     'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE', 'READ_MEDIA_IMAGES', 'READ_MEDIA_VIDEO']) {
     assert.ok(permissions.includes(`android.permission.${permission}`));
   }
+});
+
+test('camera lint annotation preserves removal and never suppresses actual permission requests', () => {
+  const removedCamera = { $: { 'android:name': 'android.permission.CAMERA', 'tools:node': 'remove', 'tools:ignore': 'ExistingIssue' } };
+  const requestedCamera = { $: { 'android:name': 'android.permission.CAMERA' } };
+  const mergedCamera = { $: { 'android:name': 'android.permission.CAMERA', 'tools:node': 'merge' } };
+  const removedMicrophone = { $: { 'android:name': 'android.permission.RECORD_AUDIO', 'tools:node': 'remove' } };
+  const manifest = { manifest: { 'uses-permission': [removedCamera, requestedCamera, mergedCamera, removedMicrophone] } };
+  const before = structuredClone(manifest);
+  annotateRemovedCameraPermission(manifest);
+  assert.deepEqual(removedCamera.$, {
+    'android:name': 'android.permission.CAMERA',
+    'tools:node': 'remove',
+    'tools:ignore': 'ExistingIssue,PermissionImpliesUnsupportedChromeOsHardware',
+  });
+  assert.deepEqual(manifest.manifest['uses-permission'].slice(1), before.manifest['uses-permission'].slice(1));
+  assert.deepEqual(Object.keys(manifest.manifest), ['uses-permission']);
+  const once = structuredClone(manifest);
+  assert.deepEqual(annotateRemovedCameraPermission(manifest), once);
+  assert.deepEqual(annotateRemovedCameraPermission({ manifest: {} }), { manifest: {} });
 });
