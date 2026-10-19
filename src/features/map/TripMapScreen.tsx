@@ -9,7 +9,7 @@ import { Image } from 'expo-image';
 import { offlineStyle } from '../../core/maps/offline-style';
 import { Problem } from '../trips/ui';
 import { buildTripMap, fitTripCamera } from './model';
-import { currentRoadRoutes, roadFeatures, roadSegments, STOPS_ONLY_LABEL, type RoadProposal } from '../road-route/model';
+import { roadDisplay, roadFeatures, roadSegments, STOPS_ONLY_LABEL, type RoadProposal } from '../road-route/model';
 import { RoadRouteEditor } from '../road-route/RoadRouteEditor';
 import { basemapPresentation, mapPalette, resolveMapStyleUrl, selectedStopDetails, stopRole,
   tripMapCamera, tripMapSummary, tripMarkerFeatures, type BasemapState } from './trip-map-v2';
@@ -45,9 +45,10 @@ class MapBoundary extends Component<{ children: ReactNode }, { failed: boolean }
   }
 }
 
-function TripCanvas({ model, selected, select, fitRequest, roads, previews, pins, selectPin, longPress }: {
+function TripCanvas({ model, selected, select, fitRequest, roads, previews, approximate, pins, selectPin, longPress }: {
   model: ReturnType<typeof buildTripMap>; selected?: string; select: (id: string) => void; fitRequest: number;
   roads: RoadProposal[]; previews: RoadProposal[];
+  approximate: ReturnType<typeof buildTripMap>['lines'];
   pins: PhotoMemoryPin[]; selectPin: (pin: PhotoMemoryPin) => void; longPress: (point: Coordinate) => void;
 }) {
   const [state, setState] = useState<BasemapState>(styleUrl ? 'loading' : 'unconfigured');
@@ -132,12 +133,12 @@ function TripCanvas({ model, selected, select, fitRequest, roads, previews, pins
         }}>
         <Camera ref={camera} initialViewState={view.current} />
         <Images images={markerImages} />
-        {!roads.length && !previews.length && <GeoJSONSource id="trip-sequence" data={model.lines}>
+        <GeoJSONSource id="trip-sequence" data={approximate}>
           <Layer id="trip-sequence-casing" type="line" layout={{ 'line-join': 'round', 'line-cap': 'round' }}
             paint={{ 'line-color': '#fffdf7', 'line-opacity': 0.9, 'line-width': 7, 'line-dasharray': [2, 1.5] }} />
           <Layer id="trip-sequence-line" type="line" layout={{ 'line-join': 'round', 'line-cap': 'round' }}
             paint={{ 'line-color': mapPalette.route, 'line-width': 4, 'line-dasharray': [2, 1.5] }} />
-        </GeoJSONSource>}
+        </GeoJSONSource>
         <GeoJSONSource id="trip-road-routes" data={roadData}>
           <Layer id="trip-road-casing" type="line" layout={{'line-cap':'round','line-join':'round'}}
             paint={{'line-color':'#fffdf7','line-width':8,'line-opacity':0.95}} />
@@ -148,7 +149,7 @@ function TripCanvas({ model, selected, select, fitRequest, roads, previews, pins
           <Layer id="trip-road-preview-casing" type="line" layout={{'line-cap':'round','line-join':'round'}}
             paint={{'line-color':'#fffdf7','line-width':8}} />
           <Layer id="trip-road-preview-line" type="line" layout={{'line-cap':'round','line-join':'round'}}
-            paint={{'line-color':'#bd7620','line-width':4,'line-opacity':0.9}} />
+            paint={{'line-color':'#1769e0','line-width':5}} />
         </GeoJSONSource>
         <GeoJSONSource id="trip-stops" data={points} onPress={event => {
           const id = event.nativeEvent.features[0]?.properties?.stopId;
@@ -213,21 +214,16 @@ export default function TripMapScreen() {
   const [pinDraft, setPinDraft] = useState<PinDraft | null>(null);
   const [selectedPin, setSelectedPin] = useState<PhotoMemoryPin | null>(null);
   const segments = useMemo(() => roadSegments(tripId,result.data?.stops ?? []), [tripId,result.data?.stops]);
-  const roads = useMemo(() => currentRoadRoutes(result.data?.roads ?? [],segments), [result.data?.roads,segments]);
+  const display = useMemo(() => roadDisplay(model, result.data?.roads ?? [], previews), [model, result.data?.roads, previews]);
+  const roads = display.roads;
   const onPreview = useCallback((values: RoadProposal[]) => { setPreviews(values); }, []);
   const onDirty = useCallback((value: boolean) => setRoadDirty(value), []);
   usePreventRemove(roadDirty || !!pinDraft, ({ data }) => {
     Alert.alert('Discard unsaved map edits?', 'Saved routes and photo memories will stay unchanged.',
       [{text:'Keep reviewing',style:'cancel'},{text:'Discard and leave',style:'destructive',onPress:() => navigation.dispatch(data.action)}]);
   });
-  const closeRoads = () => {
-    const close = () => { setShowRoads(false); setPreviews([]); setRoadDirty(false); };
-    if (roadDirty) Alert.alert('Discard unconfirmed road edits?', 'Your confirmed saved route will stay unchanged.',
-      [{text:'Keep reviewing',style:'cancel'},{text:'Discard',style:'destructive',onPress:close}]);
-    else close();
-  };
-  const select = (id: string) => { setSelected(id); setExpanded(true); setShowStops(false); };
-  const fitTrip = () => { setSelected(undefined); setExpanded(false); setShowStops(false); setFitRequest(v => v + 1); };
+  const select = (id: string) => { setSelected(id); setExpanded(true); setShowStops(false); setShowRoads(false); };
+  const fitTrip = () => { setSelected(undefined); setExpanded(false); setShowStops(false); setShowRoads(false); setFitRequest(v => v + 1); };
   useEffect(() => { setSelected(undefined); setExpanded(false); setShowStops(false); setShowRoads(false); setPreviews([]); setRoadDirty(false); }, [tripId]);
   useEffect(() => { setPinDraft(null); setSelectedPin(null); }, [tripId]);
   const item = model.route.find(stop => stop.stop.id === selected);
@@ -251,8 +247,12 @@ export default function TripMapScreen() {
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipStrip} contentContainerStyle={s.chips}>
           {summary.chips.map(chip => <View key={chip} style={s.chip}><Text style={s.chipText}>{chip}</Text></View>)}
         </ScrollView>
+        <View style={s.actions}>
+          <Button title={showRoads ? 'Hide road review' : display.previews.length ? 'Review road preview' : 'Generate road route'} primary
+            onPress={() => { setShowRoads(v => !v); setSelected(undefined); setExpanded(false); }} />
+        </View>
         <View style={s.mapArea}>
-          <MapBoundary key={tripId}><TripCanvas model={model} selected={selected} select={select} fitRequest={fitRequest} roads={roads} previews={previews}
+          <MapBoundary key={tripId}><TripCanvas model={model} selected={selected} select={select} fitRequest={fitRequest} roads={roads} previews={display.previews} approximate={display.approximate}
             pins={result.data.pins} selectPin={pin => { if (!pinDraft?.moving) setSelectedPin(pin); }}
             longPress={point => { try { setPinDraft(longPressPin(point,pinDraft)); setSelectedPin(null); } catch { /* ignore invalid native coordinates */ } }} /></MapBoundary>
           {(model.mapped.length > 0 || result.data.pins.length > 0) && <View style={s.fit}><Button title="⌖ Fit trip" onPress={fitTrip} /></View>}
@@ -260,17 +260,18 @@ export default function TripMapScreen() {
         <PhotoMemoryEditor tripId={tripId} draft={pinDraft} setDraft={setPinDraft} selected={selectedPin} setSelected={setSelectedPin} pins={result.data.pins} />
         <View style={s.sheet}>
           <Pressable accessibilityRole="button" accessibilityState={{ expanded }} accessibilityLabel={expanded ? 'Collapse trip panel' : 'Expand trip panel'}
-            onPress={() => setExpanded(v => !v)} style={s.sheetHeading}>
+            onPress={() => { setShowRoads(false); setExpanded(v => !v); }} style={s.sheetHeading}>
             <View style={s.handle} />
             <Text style={s.sheetTitle} numberOfLines={1}>{detail?.name ?? summary.title}</Text>
             <Text style={s.muted}>{detail ? `${stopRole(item!, model.route.length)} ${detail.order} · ${detail.kind} · ${detail.photoCount} associated ${detail.photoCount === 1 ? 'photo' : 'photos'}`
               : `${summary.mappedLabel} · ${summary.photoLabel}`} {expanded ? '⌄' : '⌃'}</Text>
           </Pressable>
-          {showRoads && <View style={{height:Math.min(height*0.36,300)}}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.panelContent}>
-            <RoadRouteEditor tripId={tripId} segments={segments} saved={result.data.roads}
+          {/* Panel visibility must not own the lifetime of temporary road proposals. */}
+          <View style={{display:showRoads ? 'flex' : 'none',height:Math.min(height*0.36,300)}}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.panelContent}>
+            <RoadRouteEditor key={JSON.stringify([tripId,segments])} tripId={tripId} segments={segments} saved={result.data.roads}
               labels={Object.fromEntries(model.route.map(item => [item.stop.id,`${item.order}. ${item.stop.place.name}`]))}
               onPreview={onPreview} onDirty={onDirty} />
-          </ScrollView></View>}
+          </ScrollView></View>
           {expanded && !showRoads && <View style={{ height: Math.min(height * 0.28, 240) }}>
             {showStops || !detail ? <FlatList data={model.route} keyExtractor={stop => stop.stop.id}
               contentContainerStyle={s.panelContent} ListEmptyComponent={<Text style={s.body}>No stops added yet. Open Route to add your first place.</Text>}
@@ -294,16 +295,12 @@ export default function TripMapScreen() {
                 <Text style={s.muted}>Photos opens this trip’s gallery. Photos without a stop remain part of the trip.</Text>
               </ScrollView>}
           </View>}
-          <View style={s.actions}><Button title="Route" onPress={() => router.push(`/trips/${tripId}/route`)} primary />
+          <View style={s.actions}><Button title="Edit Stops" onPress={() => router.push(`/trips/${tripId}/route`)} />
             <Button title="Timeline" onPress={() => router.push(`/trips/${tripId}/timeline`)} />
             <Button title="Photos" onPress={() => router.push(`/trips/${tripId}/photos`)} />
-            <Button title="Stops" onPress={() => { setShowStops(true); setExpanded(true); }} /></View>
-          {(segments.length > 0 || result.data.roads.length > 0) && <View style={s.actions}>
-            <Button title={showRoads ? 'Close road review' : roads.length ? 'Review / replace road route' : 'Generate road route'}
-              onPress={() => { if(showRoads) closeRoads(); else {setShowRoads(true);setSelected(undefined);setExpanded(true);} }} />
-          </View>}
-          <Text style={s.legend}>{roads.length ? `${roads.length}/${segments.length} segments · confirmed generated road suggestions; historical road unverified` : STOPS_ONLY_LABEL}
-            {previews.length ? ' · Amber: unconfirmed preview' : ''}{result.data.roads.length > roads.length ? ' · stale saved segments hidden' : ''}
+            <Button title="Stops" onPress={() => { setShowRoads(false); setShowStops(true); setExpanded(true); }} /></View>
+          <Text style={s.legend}>{display.covered ? `Blue: ${display.covered}/${display.total} road segments · ${display.previews.length ? 'temporary preview, not saved' : 'saved suggestion'} · historical road unverified` : STOPS_ONLY_LABEL}
+            {display.approximate.features.length ? ' · Dashed: approximate Stop connections' : ''}
             {model.unknownCount + model.unconfirmedCount > 0 ? ' · gaps preserved' : ''}</Text>
           {(roads.length > 0 || previews.length > 0) && <Pressable accessibilityRole="link" onPress={() => { void Linking.openURL('https://account.heigit.org/info/tos'); }}>
             <Text style={s.legend}>© openrouteservice by HeiGIT | Data from OpenStreetMap · CC-BY-SA 4.0</Text>

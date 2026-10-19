@@ -1,5 +1,7 @@
 # Trip Map V2
 
+Latest road workflow: see **Road route workflow — 19 October 2026** at the end.
+
 Current MapTiler integration is documented in **MapTiler Streets V4 — 12 October
 2026**, with the latest physical results under **Successful build retry and Samsung
 verification** below. Current road-routing implementation and blockers are documented in the
@@ -1220,5 +1222,123 @@ scale and native restore of a pin-bearing package on the Samsung were not tested
 the actual Samsung export was restored with real SQLite/files on the host instead.
 
 **PASS — MAP MEMORY PINS VERIFIED**
+
+**READY FOR NEXT STEP**
+
+## Road route workflow — 19 October 2026
+
+### Cause and scoped fix
+
+The ORS transport and SecureStore credential were already wired to the road
+editor. Normal map entry intentionally made no routing request, and the earlier
+live checks produced temporary proposals, not saved road rows. The primary
+**Route** action opened the Stop editor; road generation was a separate secondary
+action. More importantly, road proposals belonged to a conditionally mounted
+`RoadRouteEditor`: closing review explicitly cleared parent previews, then editor
+cleanup discarded every session and published an empty preview. The legend also
+selected “Stops only” from saved rows alone even while preview geometry existed.
+Any successful segment suppressed all approximate links, hiding failed legs.
+
+**Generate road route** is now a primary action above the main map. It opens the
+existing review editor. **Generate all segments** still requires the explicit
+ORS/HeiGIT coordinate disclosure and confirmation, then requests adjacent Stop
+pairs sequentially in canonical order using the existing provider/SecureStore
+boundary. Cancel sends nothing. Unknown/unconfirmed Stops remain gaps; photo pins
+are never routing inputs. **Edit Stops** separately names the former Route action.
+
+The editor stays mounted while hidden. Hide/reopen review, numbered Stop selection,
+the Stops panel, sheet expansion/collapse, Fit trip and photo-memory modals retain
+the in-memory session. Changed Stop inputs replace the editor session and stale
+previews are filtered before display. Discard is a separate explicit editor action;
+leaving the map/process discards temporary geometry. No new persistence, route
+auto-generation, migration, dependency, credential handling or export path is added.
+
+Both saved suggestions and temporary previews use solid blue MapLibre lines with
+light contrasting casing below numbered Stop layers and native photo markers.
+Preview geometry replaces only the corresponding saved segment in the display.
+Uncovered segments retain dashed lines labeled **approximate Stop connections**.
+The legend counts covered road segments and explicitly identifies temporary,
+unsaved previews and unverified historical roads. Full provider vertices still
+participate in Fit trip. Existing migration 12, portable v3 and photo rendering
+remain intact. Provider storage permissions remain unresolved: new ORS geometry
+cannot be saved, archived or exported.
+
+### Verification evidence
+
+- TypeScript passes. **150 relevant host tests pass** across database/migrations,
+  Stop routing, media, Trip Map/road routing/photo pins, global map, archives,
+  search, credential privacy and release checks. Added cases exercise ordered
+  full-trip generation, partial failures, per-leg fallback, retry, saved/preview
+  precedence, stale coordinates and absence of preview rows in SQLite/export.
+  The Step 3 table-list expectation was missing the existing migration-12 table;
+  it now includes `photo_memory_pins`. No production schema change was needed.
+- The release JDK test initially failed inside the filesystem sandbox while
+  creating its disposable JAR. The release suite and final combined run pass with
+  the required filesystem access. No failing test was skipped.
+- Signed APK/AAB build passed (879 tasks, 3m 53s). Bundletool, expected signer,
+  all 1,419 signed payloads, four ABIs, 16 KiB alignment for 64-bit native libraries,
+  APK ZIP alignment and restricted manifest permissions passed. The installed APK
+  was copied aside and its signer matched before `adb install -r`.
+- Samsung **SM-M146B / RZCW3261ZBJ / Android 15**, installed standalone release,
+  existing **TEST-MapTiler-UA-Verification** trip, four unchanged Stops and one
+  existing imported synthetic screenshot. No Metro, uninstall, data clear,
+  vault reset or native archive restore was used.
+- Main-map entry shows labeled dashed approximation and the primary generation
+  action. Cancelling the ORS disclosure leaves 0/3 previews. Explicit confirmation
+  produced the following real provider results through the current SecureStore key:
+
+| Ordered segment | Geometry points | Provider distance |
+| --- | ---: | ---: |
+| Jalandhar → Shimla | 4,650 | 257.8 km |
+| Shimla → Sangla | 5,578 | 217.0 km |
+| Sangla → Chitkul | 696 | 23.9 km |
+
+These are successful validated provider responses, not fixture lines. The exact
+HTTP success code is not retained; no credential, response body or geometry file
+is logged. The map renders the full route in blue with a contrasting casing.
+Hide/reopen review, Stops, native Jalandhar marker selection, bottom-sheet
+expansion/collapse, photo-memory sheet and Fit trip retained **3/3** geometry.
+The point counts and distances were read from the existing review UI.
+
+A disposable **TEST-Road-Workflow-19Oct** photo pin reused the existing screenshot.
+Its local thumbnail rendered above the route; native marker selection opened its
+note and photo viewer, and closing the modal retained the route. Disabling both
+radios and resuming the app showed **Offline overview** with all three in-memory
+road segments and the thumbnail intact. Explicitly regenerating just Sangla →
+Chitkul offline produced a credential-free network error and Retry segment;
+the other two road segments remained blue and only the failed leg reverted to
+the labeled dashed approximation. A subsequent offline force-stop/cold launch
+showed the dashed Stop sequence and the saved photo pin, confirming that new road
+geometry was not persisted or automatically regenerated.
+
+The saved pin's full photo also opened after the offline cold launch. Wi-Fi and
+mobile data were restored to their original enabled states in `finally`. The
+disposable pin was removed through its normal confirmation UI; the original photo
+and four Stops remain. Online basemap recovery and a fresh explicitly confirmed
+3/3 generation passed. Sangla selection retained the complete preview, and the
+phone was left on the main map with Fit trip and the complete blue route visible.
+Current-process logs contain no matching native fatal signal, fatal exception or
+React Native JavaScript error; process-exit history shows only the planned package
+update and force-stop in this run. These scoped checks do not resolve the separate
+historical native archive-restore blocker, and no populated-vault restore was run.
+
+| Final artifact | SHA-256 |
+| --- | --- |
+| APK | `8B591E305D3BC2C8ABF7B404C6FFA334CAA5C9CDD972DD25B6C3A80592AF5047` |
+| AAB | `450D6D6A3BA36B8CA214F31C2AEC5ED3D001E169823D4A8307C4C124BD2E0EAB` |
+
+Changed files: `src/features/map/TripMapScreen.tsx`,
+`src/features/road-route/RoadRouteEditor.tsx`,
+`src/features/road-route/model.ts`, `tests/step7/road-routes.test.mjs`,
+`tests/step3/route.test.mjs`, and this document.
+
+Ignored evidence is under `.expo/road-workflow-*`: `final.png/xml`,
+`fit-retained.png`, `consent.png/xml`, `segment1.xml` through `segment3.xml`,
+`marker-selected.png/xml`, `sangla-selected.png/xml`, `pin-saved.png/xml`,
+`offline-retained.png/xml`, `offline-error.png/xml`, `offline-cold.png/xml`,
+`offline-photo.png`, `regression-final.log`, `build.log`, `runtime.log` and
+`exit-info-final.log`. `git diff --check` passes. No commit or push.
+
+**PASS — ROAD ROUTE WORKFLOW VERIFIED**
 
 **READY FOR NEXT STEP**
