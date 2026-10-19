@@ -1258,3 +1258,25 @@ Native feasibility → shell/database → trip CRUD → places/stops → durable
 5. **Long-term readability:** evolving schemas, unsupported future image decoders, dependency changes, and service disappearance. Preserve originals plus common display formats and regularly tested open exports.
 
 The governing choice is durability with honest uncertainty: preserve what the user actually has, make corrections reversible, and keep the archive readable without a network or the original service.
+
+## 28. Scoped extension: manual photo memory pins — 18 October 2026
+
+Trip Map photo memories are independent manual associations, stored in
+`photo_memory_pins` (migration 12): stable ID, vault/trip/media IDs, longitude,
+latitude, optional note and audit/tombstone timestamps. They do not create Places,
+Stops, visits, routes or source/correction metadata. Deliberately selected `(0,0)`
+is valid. A coordinate is not evidence of a photo capture location or a visit.
+
+Each pin references the existing Media asset directly, including media imported
+through another trip. No TripMedia placement or original-file copy is required.
+Removing a pin only tombstones that association. Physical media deletion is
+restricted by its references; a live pin also prevents media trash. Trip trash
+hides its pins through the parent; restoring the trip reveals them unchanged.
+
+Pin writes use the existing serialized SQLite transactions and post-commit
+invalidation. Coordinates come only from deliberate map long-press. No GPS,
+geocoding, background tracking or automatic coordinate inference is introduced.
+The existing MapTiler tile-area disclosure applies, while photos and notes stay
+local. ORS preview, confirmation/storage restrictions and saved geometry remain
+unchanged. Portable format v3 preserves pins and their shared Media references;
+v1/v2 imports have no pins. Older readers must reject v3.

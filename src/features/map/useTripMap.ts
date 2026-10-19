@@ -9,9 +9,10 @@ import { message } from '../trips/ui';
 import { tripMapPhotoCounts } from './trip-map-query';
 import type { PhotoCounts } from './trip-map-v2';
 import type { SavedRoadRoute } from '../road-route/model';
+import type { PhotoMemoryPin } from './photo-memory-repository';
 
 export function useTripMap(tripId: string) {
-  const [data, setData] = useState<{ trip: Trip; days: TripDay[]; stops: RouteStop[]; photos: PhotoCounts; roads: SavedRoadRoute[] }>();
+  const [data, setData] = useState<{ trip: Trip; days: TripDay[]; stops: RouteStop[]; photos: PhotoCounts; roads: SavedRoadRoute[]; pins: PhotoMemoryPin[] }>();
   const [error, setError] = useState('');
   const [version, setVersion] = useState(0);
   useFocusEffect(useCallback(() => {
@@ -23,16 +24,17 @@ export function useTripMap(tripId: string) {
       const read = async () => {
         const request = ++generation;
         try {
-          const [trip, days, stops, photos, roads] = await Promise.all([
+          const [trip, days, stops, photos, roads, pins] = await Promise.all([
             vault.trips.getTripById(tripId), vault.timeline.listTripDays(tripId), vault.routes.listStops(tripId),
             tripMapPhotoCounts(vault.database, vault.vault.id, tripId),
             vault.roadRoutes.list(tripId),
+            vault.photoMemories.list(tripId),
           ]);
           if (!trip || trip.deletedAt) throw new Error('Trip unavailable. It may be in Trash.');
-          if (active && request === generation) { setData({ trip, days, stops, photos, roads }); setError(''); }
+          if (active && request === generation) { setData({ trip, days, stops, photos, roads, pins }); setError(''); }
         } catch (e) { if (active && request === generation) setError(message(e)); }
       };
-      for (const repository of [vault.trips, vault.routes, vault.timeline, vault.roadRoutes]) subscriptions.push(repository.subscribe(() => { void read(); }));
+      for (const repository of [vault.trips, vault.routes, vault.timeline, vault.roadRoutes, vault.photoMemories]) subscriptions.push(repository.subscribe(() => { void read(); }));
       const media = await mediaService();
       if (!active) return;
       subscriptions.push(media.repository.subscribe(() => { void read(); }));

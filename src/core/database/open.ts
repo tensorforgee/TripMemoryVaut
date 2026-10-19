@@ -12,6 +12,7 @@ import { ChapterRepository } from '../../features/chapters/repository';
 import { TravelLifeRepository } from '../../features/life/repository';
 import { DreamRepository } from '../../features/dreams/repository';
 import { GlobalMapRepository } from '../../features/map/repository';
+import { PhotoMemoryRepository } from '../../features/map/photo-memory-repository';
 import { SearchRepository } from '../../features/search/repository';
 import { resetVaultContents } from '../../features/settings/reset-database';
 
@@ -59,6 +60,7 @@ export type VaultDatabase = {
   life: TravelLifeRepository;
   dreams: DreamRepository;
   map: GlobalMapRepository;
+  photoMemories: PhotoMemoryRepository;
   search: SearchRepository;
   close(): Promise<void>;
 };
@@ -74,6 +76,7 @@ function createVaultHandle(databaseName: string, database: LocalDatabase, vault:
     life: new TravelLifeRepository(database, vault.id),
     dreams: new DreamRepository(database, vault.id, randomUUID),
     map: new GlobalMapRepository(database, vault.id),
+    photoMemories: new PhotoMemoryRepository(database, vault.id, randomUUID),
     search: new SearchRepository(database, vault.id),
     close: async () => { await database.close(); opened.delete(databaseName); },
   };

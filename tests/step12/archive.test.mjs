@@ -9,6 +9,7 @@ import { getOrCreateVault } from '../../.expo/step1-tests/core/database/vault.js
 import { createPortableExport, inspectPortableRestore, publishPortableExport, restorePortableArchive } from '../../.expo/step1-tests/services/archive/portable.js';
 import { mediaPath } from '../../.expo/step1-tests/core/media/files.js';
 import { OrsCredentialStore } from '../../.expo/step1-tests/features/routing-credentials/credential-store.js';
+import { PhotoMemoryRepository } from '../../.expo/step1-tests/features/map/photo-memory-repository.js';
 
 class NodeIO {
   async createRoot(root){await mkdir(root,{recursive:false});}
@@ -68,10 +69,10 @@ async function exported(t){const f=await fixture(t);const io=new NodeIO();const 
 async function rewriteManifest(io,root,mutate){const manifest=JSON.parse(await io.readText(root,'manifest.json'));mutate(manifest);const text=JSON.stringify(manifest,null,2)+'\n';await io.writeText(root,'manifest.json',text);await io.writeText(root,'COMPLETE.json',JSON.stringify({manifest_sha256:await io.sha256Text(text)},null,2)+'\n');}
 async function rewriteData(io,root,path,mutate){const value=JSON.parse(await io.readText(root,path));mutate(value);const text=JSON.stringify(value,null,2)+'\n';await io.writeText(root,path,text);await rewriteManifest(io,root,m=>{const file=m.files.find(x=>x.path===path);file.bytes=Buffer.byteLength(text);file.sha256=createHash('sha256').update(text).digest('hex');});}
 
-test('format v2 export is deterministic, structured, complete and excludes device/import state',async t=>{
+test('format v3 export is deterministic, structured, complete and excludes device/import state',async t=>{
   const x=await exported(t);const second=join(dirname(x.f.path),'stage-two');const again=await createPortableExport({database:x.f.database,vaultId:x.f.vault.id,io:x.io,mediaFiles:x.sourceMedia,stagingRoot:second,now:()=>stamp});
   assert.equal(await x.io.readText(x.staging,'manifest.json'),await x.io.readText(second,'manifest.json'));
-  assert.equal(again.manifest.format_version,2);assert.equal(again.manifest.vault.id,x.f.vault.id);assert.equal(again.manifest.counts.trips,2);assert.equal(again.manifest.counts.reconstruction_history,2);
+  assert.equal(again.manifest.format_version,3);assert.equal(again.manifest.vault.id,x.f.vault.id);assert.equal(again.manifest.counts.trips,2);assert.equal(again.manifest.counts.reconstruction_history,2);
   const trips=JSON.parse(await x.io.readText(x.staging,'data/trips.json')).records;assert.deepEqual(trips.find(r=>r.id===x.ids.trip).dates,approximate);assert.ok(trips.find(r=>r.id===x.ids.trashedTrip).deleted_at);
   const media=await readFile(join(x.staging,'media','originals',x.ids.hash.slice(0,2),`${x.ids.hash}.original`));assert.deepEqual(media,x.ids.bytes);assert.equal(createHash('sha256').update(media).digest('hex'),x.ids.hash);
   const all=(await Promise.all(again.manifest.files.filter(f=>f.kind==='data').map(f=>x.io.readText(second,f.path)))).join('');assert.doesNotMatch(all,/source_uri|staging_relative_path|cache|content:\/\//);
@@ -210,12 +211,12 @@ test('legacy format v1 restores through the current schema and survives FTS clos
   const legacy = join(dirname(x.f.path),'legacy-v1');
   await cp(x.staging,legacy,{recursive:true});
   const manifest = JSON.parse(await x.io.readText(legacy,'manifest.json'));
-  for (const file of manifest.files.filter(file=>file.kind==='data' && file.path!=='data/road-route-segments.json')) {
+  for (const file of manifest.files.filter(file=>file.kind==='data' && file.path!=='data/road-route-segments.json' && file.path!=='data/photo-memory-pins.json')) {
     await rewriteData(x.io,legacy,file.path,data=>{data.format_version=1;});
   }
   await rewriteManifest(x.io,legacy,m=>{
-    m.format_version=1;m.schema_version=10;delete m.counts.road_route_segments;
-    m.files=m.files.filter(file=>file.path!=='data/road-route-segments.json');
+    m.format_version=1;m.schema_version=10;delete m.counts.road_route_segments;delete m.counts.photo_memory_pins;
+    m.files=m.files.filter(file=>file.path!=='data/road-route-segments.json' && file.path!=='data/photo-memory-pins.json');
   });
   await unlink(join(legacy,'data/road-route-segments.json'));
   const files = new MediaFiles(join(dirname(fresh.path),'legacy-media'));
@@ -225,9 +226,51 @@ test('legacy format v1 restores through the current schema and survives FTS clos
   try {
     assert.equal((await connection.getFirstAsync('SELECT id FROM vaults')).id,x.f.vault.id);
     assert.equal((await connection.getFirstAsync('SELECT count(*) n FROM road_route_segments')).n,0);
-    assert.equal((await connection.getFirstAsync('PRAGMA user_version')).user_version,11);
+    assert.equal((await connection.getFirstAsync('PRAGMA user_version')).user_version,12);
     assert.equal((await connection.getFirstAsync('PRAGMA integrity_check')).integrity_check,'ok');
     assert.deepEqual(await connection.getAllAsync('PRAGMA foreign_key_check'),[]);
     assert.deepEqual(await readFile(files.uri(x.ids.relative)),x.ids.bytes);
   } finally { await connection.closeAsync(); }
 });
+
+ test('v3 photo memories roundtrip with shared bytes, tombstones, pin-only trips and escaped journal text',async t=>{
+  const f=await fixture(t),io=new NodeIO(),files=new MediaFiles(join(dirname(f.path),'pin-source')),ids=await seed(f,files);
+  const pins=new PhotoMemoryRepository(f.database,f.vault.id,randomUUID),trip=await f.trips.createTripDraft({title:'Pin only'});
+  const a=await pins.save(trip.id,{mediaId:ids.media,coordinate:[0,0],note:'<script>private memory</script>'});
+  const b=await pins.save(ids.trip,{mediaId:ids.media,coordinate:[180,90],note:null});await pins.remove(ids.trip,b);
+  await pins.save(ids.trashedTrip,{mediaId:ids.media,coordinate:[77,31],note:null}).then(()=>assert.fail('trashed trip accepted'),()=>{});
+  const root=join(dirname(f.path),'pins-export');const result=await createPortableExport({database:f.database,vaultId:f.vault.id,io,mediaFiles:files,stagingRoot:root});
+  assert.equal(result.manifest.counts.photo_memory_pins,2);assert.equal(result.manifest.media_count,1);
+  assert.equal(result.manifest.files.filter(f=>f.kind==='media-original').length,1);
+  const geo=JSON.parse(await io.readText(root,'routes/routes.geojson')).features.filter(f=>f.properties.kind==='photo_memory');
+  assert.equal(geo.length,1);assert.deepEqual(geo[0].geometry.coordinates,[0,0]);assert.equal(geo[0].properties.media_id,ids.media);
+  const html=await io.readText(root,'journal/index.html');assert.match(html,/&lt;script&gt;private memory/);assert.doesNotMatch(html,/<script>private memory/);
+  const fresh=await fixture(t),dest=new MediaFiles(join(dirname(fresh.path),'pins-restored'));
+  await restorePortableArchive({database:fresh.database,currentVaultId:fresh.vault.id,io,archiveRoot:root,destinationMedia:dest,newStagingId:randomUUID});
+  assert.deepEqual(await fresh.connection.getAllAsync('SELECT * FROM photo_memory_pins ORDER BY id'),await f.connection.getAllAsync('SELECT * FROM photo_memory_pins ORDER BY id'));
+  assert.deepEqual(await readFile(dest.uri(ids.relative)),ids.bytes);
+  const reopened=new PhotoMemoryRepository(fresh.database,f.vault.id,randomUUID);assert.equal((await reopened.list(trip.id))[0].id,a);
+  await reopened.remove(trip.id,a);assert.deepEqual(await readFile(dest.uri(ids.relative)),ids.bytes);
+ });
+
+ test('v3 pin validation rejects dangling/cross-vault references, invalid coordinates, oversized notes and older-format smuggling',async t=>{
+  const x=await exported(t);const template={id:randomUUID(),vault_id:x.f.vault.id,trip_id:x.ids.trip,media_id:x.ids.media,longitude:77,latitude:31,note:null,created_at:stamp,updated_at:stamp,deleted_at:null};
+  const mutations=[r=>r.media_id=randomUUID(),r=>r.trip_id=randomUUID(),r=>r.vault_id=randomUUID(),r=>r.longitude=181,r=>r.latitude=null,r=>r.note='x'.repeat(10001),r=>r.created_at='not a date',r=>r.stop_id=x.ids.stop];
+  for(const [i,mutate] of mutations.entries()){
+    const root=join(dirname(x.f.path),`bad-pin-${i}`);await cp(x.staging,root,{recursive:true});const pin={...template};mutate(pin);
+    await rewriteData(x.io,root,'data/photo-memory-pins.json',d=>d.records=[pin]);await rewriteManifest(x.io,root,m=>m.counts.photo_memory_pins=1);
+    await assert.rejects(inspectPortableRestore(x.io,root));
+  }
+  await rewriteManifest(x.io,x.published,m=>{m.format_version=2;m.schema_version=11;});
+  await assert.rejects(inspectPortableRestore(x.io,x.published),/require portable format v3/);
+ });
+
+ test('v2 archives restore with no invented pins through schema 12',async t=>{
+  const x=await exported(t),manifest=JSON.parse(await x.io.readText(x.staging,'manifest.json'));
+  for(const file of manifest.files.filter(f=>f.kind==='data'&&f.path!=='data/photo-memory-pins.json')) await rewriteData(x.io,x.staging,file.path,d=>d.format_version=2);
+  await rewriteManifest(x.io,x.staging,m=>{m.format_version=2;m.schema_version=11;delete m.counts.photo_memory_pins;m.files=m.files.filter(f=>f.path!=='data/photo-memory-pins.json');});
+  const fresh=await fixture(t),dest=new MediaFiles(join(dirname(fresh.path),'legacy-v2'));
+  await restorePortableArchive({database:fresh.database,currentVaultId:fresh.vault.id,io:x.io,archiveRoot:x.staging,destinationMedia:dest,newStagingId:randomUUID});
+  assert.deepEqual(await fresh.connection.getAllAsync('SELECT * FROM photo_memory_pins'),[]);
+  assert.deepEqual(await readFile(dest.uri(x.ids.relative)),x.ids.bytes);
+ });

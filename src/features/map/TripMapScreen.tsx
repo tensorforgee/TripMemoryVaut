@@ -15,6 +15,10 @@ import { basemapPresentation, mapPalette, resolveMapStyleUrl, selectedStopDetail
   tripMapCamera, tripMapSummary, tripMarkerFeatures, type BasemapState } from './trip-map-v2';
 import { markerImages } from './marker-images';
 import { useTripMap } from './useTripMap';
+import { PhotoMemoryEditor, PhotoMemoryMarkers } from './PhotoMemories';
+import { longPressPin, type PinDraft } from './photo-memory-model';
+import type { PhotoMemoryPin } from './photo-memory-repository';
+import type { Coordinate } from './model';
 
 const styleUrl = resolveMapStyleUrl(process.env.EXPO_PUBLIC_MAP_STYLE_URL);
 const isMapTiler = styleUrl !== null && new URL(styleUrl).hostname === 'api.maptiler.com';
@@ -41,9 +45,10 @@ class MapBoundary extends Component<{ children: ReactNode }, { failed: boolean }
   }
 }
 
-function TripCanvas({ model, selected, select, fitRequest, roads, previews }: {
+function TripCanvas({ model, selected, select, fitRequest, roads, previews, pins, selectPin, longPress }: {
   model: ReturnType<typeof buildTripMap>; selected?: string; select: (id: string) => void; fitRequest: number;
   roads: RoadProposal[]; previews: RoadProposal[];
+  pins: PhotoMemoryPin[]; selectPin: (pin: PhotoMemoryPin) => void; longPress: (point: Coordinate) => void;
 }) {
   const [state, setState] = useState<BasemapState>(styleUrl ? 'loading' : 'unconfigured');
   const [attempt, setAttempt] = useState(0);
@@ -60,7 +65,8 @@ function TripCanvas({ model, selected, select, fitRequest, roads, previews }: {
   const roadData = useMemo(() => roadFeatures(roads), [roads]);
   const previewData = useMemo(() => roadFeatures(previews), [previews]);
   const cameraPoints = useMemo(() => [...model.mapped.map(item => item.coordinate),
-    ...roads.flatMap(r => r.geometry.coordinates), ...previews.flatMap(r => r.geometry.coordinates)], [model, roads, previews]);
+    ...roads.flatMap(r => r.geometry.coordinates), ...previews.flatMap(r => r.geometry.coordinates),
+    ...pins.map(p => [p.longitude,p.latitude] as Coordinate)], [model, roads, previews, pins]);
   const fit = useMemo(() => fitTripCamera(cameraPoints, size.width, size.height) ?? tripMapCamera(model,size.width,size.height), [cameraPoints, size]);
   const focused = model.mapped.find(item => item.stop.id === selected);
   const clearTimer = () => { clearTimeout(timer.current); timer.current = undefined; };
@@ -113,6 +119,7 @@ function TripCanvas({ model, selected, select, fitRequest, roads, previews }: {
       size.width > 0 && size.height > 0 && <Map key={`${local ? 'local' : 'remote'}-${attempt}`} style={StyleSheet.absoluteFill}
         mapStyle={local ? offlineStyle : styleUrl!} dragPan touchZoom touchRotate doubleTapZoom touchPitch={false}
         logo={false} attribution attributionPosition={isMapTiler && !local ? { top: 8, right: 8 } : { bottom: 8, left: 8 }}
+        onLongPress={event => longPress(event.nativeEvent.lngLat)}
         onDidFinishLoadingStyle={() => { styleReady.current = true; camera.current?.jumpTo(view.current); }}
         onDidFailLoadingMap={() => { clearTimer(); styleReady.current = false; setState(local ? 'unavailable' : 'offline'); }}
         onRegionWillChange={armTimer}
@@ -164,12 +171,13 @@ function TripCanvas({ model, selected, select, fitRequest, roads, previews }: {
         {focused && <Marker id="selected-stop-label" lngLat={focused.coordinate} anchor="bottom" offset={[0, -31]}>
           <View pointerEvents="none" style={s.pinLabel}><Text numberOfLines={1} style={s.pinText}>{focused.stop.place.name}</Text></View>
         </Marker>}
+        <PhotoMemoryMarkers pins={pins} select={selectPin} />
       </Map>}
     <View style={s.mapStatus} pointerEvents="box-none">
       <View style={s.statusPill}><Text style={s.statusText} accessibilityLiveRegion="polite">{status.label}</Text></View>
       {(state === 'offline' || state === 'unavailable') && styleUrl ? <Button title="Retry basemap" onPress={retry} /> : null}
     </View>
-    {!model.mapped.length && <View style={s.noStops} pointerEvents="none">
+    {!model.mapped.length && !pins.length && <View style={s.noStops} pointerEvents="none">
       <Text style={s.title}>Your map starts with a place</Text>
       <Text style={s.body}>{model.route.length ? 'These stops have no confirmed, usable coordinates yet. Your route is saved below.'
         : 'Add stops through Route when you are ready. Unknown places and dates can stay unknown.'}</Text>
@@ -202,12 +210,14 @@ export default function TripMapScreen() {
   const [showRoads, setShowRoads] = useState(false);
   const [previews, setPreviews] = useState<RoadProposal[]>([]);
   const [roadDirty, setRoadDirty] = useState(false);
+  const [pinDraft, setPinDraft] = useState<PinDraft | null>(null);
+  const [selectedPin, setSelectedPin] = useState<PhotoMemoryPin | null>(null);
   const segments = useMemo(() => roadSegments(tripId,result.data?.stops ?? []), [tripId,result.data?.stops]);
   const roads = useMemo(() => currentRoadRoutes(result.data?.roads ?? [],segments), [result.data?.roads,segments]);
   const onPreview = useCallback((values: RoadProposal[]) => { setPreviews(values); }, []);
   const onDirty = useCallback((value: boolean) => setRoadDirty(value), []);
-  usePreventRemove(roadDirty, ({ data }) => {
-    Alert.alert('Discard unconfirmed road edits?', 'Your confirmed saved route will stay unchanged.',
+  usePreventRemove(roadDirty || !!pinDraft, ({ data }) => {
+    Alert.alert('Discard unsaved map edits?', 'Saved routes and photo memories will stay unchanged.',
       [{text:'Keep reviewing',style:'cancel'},{text:'Discard and leave',style:'destructive',onPress:() => navigation.dispatch(data.action)}]);
   });
   const closeRoads = () => {
@@ -219,6 +229,7 @@ export default function TripMapScreen() {
   const select = (id: string) => { setSelected(id); setExpanded(true); setShowStops(false); };
   const fitTrip = () => { setSelected(undefined); setExpanded(false); setShowStops(false); setFitRequest(v => v + 1); };
   useEffect(() => { setSelected(undefined); setExpanded(false); setShowStops(false); setShowRoads(false); setPreviews([]); setRoadDirty(false); }, [tripId]);
+  useEffect(() => { setPinDraft(null); setSelectedPin(null); }, [tripId]);
   const item = model.route.find(stop => stop.stop.id === selected);
   const summary = result.data && tripMapSummary(result.data.trip, model, result.data.photos);
   const detail = item && result.data ? selectedStopDetails(item, result.data.days, result.data.photos) : null;
@@ -241,9 +252,12 @@ export default function TripMapScreen() {
           {summary.chips.map(chip => <View key={chip} style={s.chip}><Text style={s.chipText}>{chip}</Text></View>)}
         </ScrollView>
         <View style={s.mapArea}>
-          <MapBoundary key={tripId}><TripCanvas model={model} selected={selected} select={select} fitRequest={fitRequest} roads={roads} previews={previews} /></MapBoundary>
-          {model.mapped.length > 0 && <View style={s.fit}><Button title="⌖ Fit trip" onPress={fitTrip} /></View>}
+          <MapBoundary key={tripId}><TripCanvas model={model} selected={selected} select={select} fitRequest={fitRequest} roads={roads} previews={previews}
+            pins={result.data.pins} selectPin={pin => { if (!pinDraft?.moving) setSelectedPin(pin); }}
+            longPress={point => { try { setPinDraft(longPressPin(point,pinDraft)); setSelectedPin(null); } catch { /* ignore invalid native coordinates */ } }} /></MapBoundary>
+          {(model.mapped.length > 0 || result.data.pins.length > 0) && <View style={s.fit}><Button title="⌖ Fit trip" onPress={fitTrip} /></View>}
         </View>
+        <PhotoMemoryEditor tripId={tripId} draft={pinDraft} setDraft={setPinDraft} selected={selectedPin} setSelected={setSelectedPin} pins={result.data.pins} />
         <View style={s.sheet}>
           <Pressable accessibilityRole="button" accessibilityState={{ expanded }} accessibilityLabel={expanded ? 'Collapse trip panel' : 'Expand trip panel'}
             onPress={() => setExpanded(v => !v)} style={s.sheetHeading}>
