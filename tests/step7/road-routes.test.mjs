@@ -9,10 +9,10 @@ import { getOrCreateVault } from '../../.expo/step1-tests/core/database/vault.js
 import { TripRepository } from '../../.expo/step1-tests/features/trips/repository.js';
 import { RouteRepository } from '../../.expo/step1-tests/features/route/repository.js';
 import { RoadRouteRepository, roadRouteIntegrity } from '../../.expo/step1-tests/features/road-route/repository.js';
-import { parseGeometry, parseProposal, roadSegments, currentRoadRoutes, splitAtDateline, roadFeatures, STOPS_ONLY_LABEL } from '../../.expo/step1-tests/features/road-route/model.js';
+import { parseGeometry, parseProposal, roadSegments, roadDisplay, currentRoadRoutes, splitAtDateline, roadFeatures, STOPS_ONLY_LABEL } from '../../.expo/step1-tests/features/road-route/model.js';
 import { decodeOrsPolyline, liveOrsProvider, orsRequest, orsAdapter, parseOrsResponse, configuredRoutingProvider, ORS_ATTRIBUTION, ORS_ENDPOINT, ORS_LICENSE } from '../../.expo/step1-tests/features/road-route/provider.js';
 import { RouteProposalSession } from '../../.expo/step1-tests/features/road-route/proposals.js';
-import { fitTripCamera } from '../../.expo/step1-tests/features/map/model.js';
+import { buildTripMap, fitTripCamera } from '../../.expo/step1-tests/features/map/model.js';
 import { createPortableExport, inspectPortableRestore, restorePortableArchive } from '../../.expo/step1-tests/services/archive/portable.js';
 import { resetVaultContents } from '../../.expo/step1-tests/features/settings/reset-database.js';
 
@@ -118,6 +118,47 @@ test('segment identity uses Stop occurrences, canonical order and never bridges 
   await x.routes.editStop(x.trip.id,x.b.id,{visitConfirmed:false});assert.equal(roadSegments(x.trip.id,await x.routes.listStops(x.trip.id)).length,0);
   await x.routes.editStop(x.trip.id,x.b.id,{visitConfirmed:true});await x.routes.updatePlace(x.b.placeId,{latitude:null,longitude:null,coordinatePrecision:'unknown'});
   assert.equal(roadSegments(x.trip.id,await x.routes.listStops(x.trip.id)).length,0);
+});
+
+test('whole-trip previews follow ordered Stops, retain failed-leg fallback and never write road rows',async t=>{
+  const x=await seed(t);
+  await x.routes.createPlaceAndAddStop(x.trip.id,{name:'C',longitude:77.04,latitude:31.04});
+  await x.routes.createPlaceAndAddStop(x.trip.id,{name:'D',longitude:77.06,latitude:31.06});
+  const model=buildTripMap(x.trip.id,await x.routes.listStops(x.trip.id));
+  const inputs=roadSegments(x.trip.id,model.route.map(item=>item.stop));
+  const sessions=inputs.map(input=>new RouteProposalSession(input)),calls=[];
+  const provider={name:'fixture',propose:async(input)=>{
+    calls.push(input);
+    if(input===inputs[1]) throw Error('Network unavailable');
+    return parseOrsResponse(response(input,[input.from,[(input.from[0]+input.to[0])/2+0.003,(input.from[1]+input.to[1])/2],input.to]),input,[],stamp);
+  }};
+  assert.deepEqual(calls,[]);
+  assert.equal(roadDisplay(model,[],[]).approximate.features.length,3);
+  for(const session of sessions) await session.generate(provider);
+  assert.deepEqual(calls,inputs);
+  const previews=sessions.flatMap(session=>session.proposal?[session.proposal]:[]);
+  const partial=roadDisplay(model,[],previews);
+  assert.equal(partial.covered,2);assert.equal(partial.total,3);
+  assert.equal(partial.approximate.features.length,1);
+  assert.equal(partial.approximate.features[0].properties.fromStopId,inputs[1].fromStopId);
+  await sessions[1].generate({name:'retry',propose:async input=>parseOrsResponse(response(input,[input.from,input.to]),input,[],stamp)});
+  const complete=sessions.map(session=>session.proposal);
+  assert.equal(roadDisplay(model,[],complete).approximate.features.length,0);
+  assert.equal(roadFeatures(complete).features.length,3);
+  assert.deepEqual(await x.roads.list(x.trip.id),[]);
+  const io=await archive(x);assert.equal(JSON.parse(await io.readText('archive','manifest.json')).counts.road_route_segments,0);
+  sessions.forEach(session=>session.discard());
+  assert.equal(roadDisplay(model,[],[]).approximate.features.length,3);
+});
+
+test('display replaces only the previewed saved leg and rejects previews after Stop input changes',async t=>{
+  const x=await seed(t),p=proposal(x.i);await x.roads.confirm(x.trip.id,p,null);
+  const saved=await x.roads.list(x.trip.id),model=buildTripMap(x.trip.id,await x.routes.listStops(x.trip.id));
+  const display=roadDisplay(model,saved,[p]);
+  assert.equal(display.roads.length,0);assert.equal(display.previews.length,1);assert.equal(display.covered,1);
+  await x.routes.updatePlace(x.a.placeId,{longitude:77.001});
+  const changed=roadDisplay(buildTripMap(x.trip.id,await x.routes.listStops(x.trip.id)),await x.roads.list(x.trip.id),[p]);
+  assert.equal(changed.previews.length,0);assert.equal(changed.roads.length,0);assert.equal(changed.approximate.features.length,1);
 });
 
 test('via edits, reordering, removal and discard clear previews; late results cannot resurrect them',async()=>{

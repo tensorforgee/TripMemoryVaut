@@ -31,10 +31,11 @@ export function RoadRouteEditor({ tripId, segments, saved, labels, onPreview, on
 
   const generate = (targets: RouteProposalSession[]) => {
     if (running) return;
+    const request = generation.current;
     Alert.alert('Generate a road suggestion?',
         'This sends the selected Stop coordinates and ordered via-point coordinates to openrouteservice / HeiGIT. Photos, notes and trip titles stay on this device. Today’s road network may differ from your historical trip. The result is a temporary preview and is not saved or exported.',
       [{ text:'Cancel', style:'cancel' }, { text:'Generate', onPress:() => { void (async () => {
-        const request = generation.current;
+        if (!mounted.current || request !== generation.current) return;
         setRunning(true); setNotice('');
         try { for (const session of targets) { if (!mounted.current || request !== generation.current) break; const pending = session.generate(configuredLiveRoutingProvider); render(); await pending; if (mounted.current) render(); } }
         finally { if (mounted.current) setRunning(false); }
@@ -44,7 +45,11 @@ export function RoadRouteEditor({ tripId, segments, saved, labels, onPreview, on
     <Text style={styles.body}>Road previews follow the provider’s mapped roads. They are suggestions, not proof of the exact historical route, and are not saved or exported.</Text>
     <View style={styles.row}><Action title="Provider terms" onPress={() => { void Linking.openURL('https://account.heigit.org/info/tos'); }} />
       <Action title="Routing settings" onPress={() => router.push('/settings/routing')} />
-      <Action title={running ? 'Generating…' : 'Generate all segments'} disabled={running || !sessions.length} onPress={() => generate(sessions)} /></View>
+      <Action title={running ? 'Generating…' : 'Generate all segments'} disabled={running || !sessions.length} onPress={() => generate(sessions)} />
+      <Action title="Discard all previews / edits" disabled={running} onPress={() => {
+        sessions.forEach(session => session.editVia(saved.find(r => segmentKey(r.input) === segmentKey(session.input))?.viaPoints ?? [])); render();
+      }} /></View>
+    <Text accessibilityLiveRegion="polite" style={styles.body}>{sessions.filter(session => session.proposal).length}/{sessions.length} road segments previewed{running ? ' · Generating in Stop order…' : ''}{sessions.some(session => session.error) ? ' · Some segments failed; dashed connections remain approximate.' : ''}</Text>
     {!!notice && <Text accessibilityLiveRegion="polite" style={styles.body}>{notice}</Text>}
     {!sessions.length && <Text style={styles.body}>Add two consecutive confirmed Stops with usable coordinates. Unknown Stops always remain gaps.</Text>}
     {sessions.map(session => {
@@ -55,7 +60,7 @@ export function RoadRouteEditor({ tripId, segments, saved, labels, onPreview, on
           : 'Confirmed generated suggestion saved on device.' : 'No confirmed road geometry.'}</Text>
         <ViaEditor session={session} disabled={running} changed={() => { setNotice('Via points changed. Generate again to preview.'); render(); }} />
         {!!session.error && <Text style={styles.error} accessibilityLiveRegion="polite">{session.error}</Text>}
-        {session.proposal && <Text style={styles.body}>PREVIEW — temporary · {session.proposal.geometry.coordinates.length} geometry points{session.proposal.distanceMeters === null ? '' : ` · provider distance ${(session.proposal.distanceMeters / 1000).toFixed(1)} km`}. Inspect the amber road line on the map.</Text>}
+        {session.proposal && <Text style={styles.body}>PREVIEW — temporary · {session.proposal.geometry.coordinates.length} geometry points{session.proposal.distanceMeters === null ? '' : ` · provider distance ${(session.proposal.distanceMeters / 1000).toFixed(1)} km`}. Inspect the blue road line on the map.</Text>}
         <View style={styles.row}>
           <Action title={session.error ? 'Retry segment' : 'Generate segment'} disabled={running} onPress={() => generate([session])} />
           <Action title="Discard proposal / edits" disabled={running} onPress={() => { session.editVia(prior?.viaPoints ?? []); render(); }} />

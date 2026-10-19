@@ -132,3 +132,14 @@ export function roadFeatures(routes: readonly RoadProposal[]) {
 export function currentRoadRoutes(saved: SavedRoadRoute[], segments: SegmentInput[]): SavedRoadRoute[] {
   return saved.filter(route => !route.stale && segments.some(input => sameInput(input, route.input)));
 }
+
+// A partial/failed preview must not hide the remaining approximate Stop links.
+// A new preview replaces only its own saved segment on the map, never in storage.
+export function roadDisplay(model: ReturnType<typeof buildTripMap>, saved: SavedRoadRoute[], previews: RoadProposal[]) {
+  const segments = roadSegments(model.route[0]?.stop.tripId ?? '', model.route.map(item => item.stop));
+  const currentPreviews = previews.filter(route => segments.some(input => sameInput(input, route.input)));
+  const roads = currentRoadRoutes(saved, segments).filter(route => !currentPreviews.some(preview => sameInput(route.input, preview.input)));
+  const covered = new Set([...roads, ...currentPreviews].map(route => segmentKey(route.input)));
+  return { roads, previews: currentPreviews, covered: covered.size, total: segments.length,
+    approximate: { ...model.lines, features: model.lines.features.filter(line => !covered.has(line.id)) } };
+}
