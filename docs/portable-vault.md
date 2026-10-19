@@ -1,5 +1,27 @@
 # Portable vault export format v1
 
+**Current writer: format v3, schema 12.** The original v1 contract below remains
+historical documentation. V2 added confirmed road segments. V3 adds required
+`data/photo-memory-pins.json` and `manifest.counts.photo_memory_pins`; the schema
+description is `schemas/v3/README.txt`. Current readers accept v1, v2 and v3.
+V1/v2 omit pins and restore an empty pin table; they cannot carry undeclared pin
+records. Readers predating v3 reject the new version instead of dropping pins.
+
+Each pin contains `id`, `vault_id`, `trip_id`, `media_id`, `longitude`, `latitude`,
+nullable `note`, `created_at`, `updated_at`, nullable `deleted_at`. Coordinates are
+finite and within ±180/±90, including deliberate zero. Notes are at most 10,000
+characters. Inspection rejects broken IDs, cross-vault ownership, invalid
+coordinates/notes/timestamps, unexpected fields and active references to deleted
+media. Pins restore after Media and before parent tombstones settle. Trip trash
+does not mutate the pin's independent deletion state.
+
+All pins sharing a Media ID use the same checksummed original in the package.
+No source metadata or correction is overwritten. The readable journal includes
+escaped notes, coordinates and original links; GeoJSON has separate Point features
+with `kind: photo_memory` and an explicit manual-association meaning. These points
+never enter route sequence lines or visited-place counts. Private coordinates and
+notes are included in this user-initiated local export, not uploaded to providers.
+
 Step 12 adds a local, folder-based preservation package. The package is deliberately readable without SQLite or Trip Memory Vault. The JSON files are authoritative for restore; `journal/index.html` and GeoJSON are convenience views.
 
 ## Package layout

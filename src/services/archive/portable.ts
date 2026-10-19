@@ -8,7 +8,7 @@ import { splitAtDateline, sameCoordinate, STOPS_ONLY_LABEL } from '../../feature
 import { roadRouteFromRow, type RoadRouteRow } from '../../features/road-route/repository';
 
 export const PORTABLE_FORMAT = 'trip-memory-vault';
-export const PORTABLE_FORMAT_VERSION = 2;
+export const PORTABLE_FORMAT_VERSION = 3;
 export const APP_VERSION = '0.1.0';
 const MAX_JSON_BYTES = 50 * 1024 * 1024;
 const MAX_ARCHIVE_BYTES = 1024 * 1024 * 1024 * 1024;
@@ -23,7 +23,7 @@ export type ArchiveFileEntry = { path: string; sha256: string; bytes: number; ki
 export type ArchiveCounts = Record<EntityName, number>;
 export type PortableManifest = {
   export_format: typeof PORTABLE_FORMAT;
-  format_version: 1 | typeof PORTABLE_FORMAT_VERSION;
+  format_version: 1 | 2 | typeof PORTABLE_FORMAT_VERSION;
   created_at: string;
   app_version: string;
   schema_version: number;
@@ -67,6 +67,7 @@ type EntitySpec = {
 };
 
 const entitySpecs = {
+  photo_memory_pins: { path: 'data/photo-memory-pins.json', table: 'photo_memory_pins', columns: ['id','vault_id','trip_id','media_id','longitude','latitude','note','created_at','updated_at','deleted_at'], order: 'trip_id,id' },
   vaults: { path: 'data/vault.json', table: 'vaults', columns: ['id','name','format_version','created_at','updated_at','deleted_at'], order: 'id' },
   trips: { path: 'data/trips.json', table: 'trips', columns: ['id','vault_id','title','status','dates_json','sort_date','sort_precision','duration_estimate_days','summary','is_favourite','created_at','updated_at','deleted_at','order_revision'], json: { dates_json: 'dates' }, booleans: ['is_favourite'], order: 'id' },
   places: { path: 'data/places.json', table: 'places', columns: ['id','vault_id','name','latitude','longitude','coordinate_precision','source','provenance_json','aliases_json','created_at','updated_at','deleted_at'], json: { provenance_json: 'provenance', aliases_json: 'aliases' }, order: 'id' },
@@ -85,6 +86,9 @@ const entitySpecs = {
 } as const satisfies Record<string, EntitySpec>;
 
 const names = Object.keys(entitySpecs) as EntityName[];
+function supportedEntity(name: EntityName, version: number) {
+  return (name !== 'photo_memory_pins' || version >= 3) && (name !== 'road_route_segments' || version >= 2);
+}
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const hashPattern = /^[0-9a-f]{64}$/;
 
@@ -186,7 +190,10 @@ function journal(data: Record<EntityName, Row[]>): string {
   const places = new Map(data.places.map(row => [row.id, row]));
   const stops = new Map<string, Row[]>();
   for (const stop of data.stops) stops.set(String(stop.trip_id), [...(stops.get(String(stop.trip_id)) ?? []), stop]);
-  const sections = data.trips.map(trip => `<section><h2>${escapeHtml(trip.title)}</h2><p>${escapeHtml(humanDate(trip.dates))}${trip.deleted_at ? ' · In trash' : ''} · ${escapeHtml(trip.status)}</p><ol>${(stops.get(String(trip.id)) ?? []).map(stop => `<li>${escapeHtml(places.get(stop.place_id)?.name ?? 'Unknown place')} · ${escapeHtml(stop.kind)} · ${escapeHtml(stop.dates ? humanDate(stop.dates) : 'Date inherited from trip')}${stop.deleted_at ? ' · Removed' : ''}</li>`).join('')}</ol></section>`).join('');
+  const sections = data.trips.map(trip => `<section><h2>${escapeHtml(trip.title)}</h2><p>${escapeHtml(humanDate(trip.dates))}${trip.deleted_at ? ' · In trash' : ''} · ${escapeHtml(trip.status)}</p><ol>${(stops.get(String(trip.id)) ?? []).map(stop => `<li>${escapeHtml(places.get(stop.place_id)?.name ?? 'Unknown place')} · ${escapeHtml(stop.kind)} · ${escapeHtml(stop.dates ? humanDate(stop.dates) : 'Date inherited from trip')}${stop.deleted_at ? ' · Removed' : ''}</li>`).join('')}</ol><h3>Manually placed photo memories</h3><p>These associations do not confirm visits or capture locations.</p><ul>${data.photo_memory_pins.filter(p=>p.trip_id===trip.id).map(pin=>{
+    const media=data.media.find(m=>m.id===pin.media_id)!;
+    return `<li>${escapeHtml(pin.latitude)}, ${escapeHtml(pin.longitude)} · ${escapeHtml(pin.note ?? '')}${pin.deleted_at ? ' · Removed' : ''} · <a href="../${portableMediaPath(String(media.sha256))}">${escapeHtml(media.original_filename ?? 'Imported photo')}</a></li>`;
+  }).join('')}</ul></section>`).join('');
   const roads = data.road_route_segments.map(row => {
     const route = portableRoad(row);
     return `<li>Trip ${escapeHtml(route.tripId)} · Stops ${escapeHtml(route.input.fromStopId)} → ${escapeHtml(route.input.toStopId)} · User-confirmed generated road suggestion; not a recorded historical track${route.stale ? ' · STALE: Stops changed' : ''}${row.deleted_at ? ' · Removed' : ''} · generated ${escapeHtml(route.provenance.generatedAt)} · confirmed ${escapeHtml(route.confirmedAt)}${route.distanceMeters === null ? '' : ` · provider distance ${route.distanceMeters} m`} · ${route.viaPoints.length} via points · ${escapeHtml(route.provenance.attribution)} · <a href="${escapeHtml(route.provenance.license)}">CC-BY-SA 4.0</a></li>`;
@@ -203,6 +210,10 @@ function portableRoad(row: Row) {
 function routes(data: Record<EntityName, Row[]>): Row {
   const places = new Map(data.places.map(row => [row.id, row]));
   const features: Row[] = [];
+  for (const pin of data.photo_memory_pins) if (pin.deleted_at===null && data.trips.some(t=>t.id===pin.trip_id && t.deleted_at===null)) {
+    features.push({type:'Feature',geometry:{type:'Point',coordinates:[pin.longitude,pin.latitude]},
+      properties:{kind:'photo_memory',meaning:'Manually placed association; not a confirmed visit or capture location',pin_id:pin.id,trip_id:pin.trip_id,media_id:pin.media_id,note:pin.note}});
+  }
   for (const trip of data.trips) {
     let previous: { coordinate: [number,number]; id: unknown } | null = null;
     for (const stop of data.stops.filter(row => row.trip_id === trip.id && row.deleted_at === null).sort((a,b) => Number(a.position)-Number(b.position))) {
@@ -241,7 +252,7 @@ export async function createPortableExport(input: { database: LocalDatabase; vau
     for (const name of names) await addText(input.io, input.stagingRoot, files, entitySpecs[name].path,
       stableJson({ entity: name, format_version: PORTABLE_FORMAT_VERSION, records: data[name] }), 'data');
     await addText(input.io, input.stagingRoot, files, 'README.txt', 'Trip Memory Vault portable export\n\nOpen journal/index.html for a readable view. JSON under data/ is authoritative. Original media is byte-preserved under media/originals/. Do not edit files if you intend to restore this package.\n', 'documentation');
-    await addText(input.io, input.stagingRoot, files, 'schemas/v2/README.txt', 'Format v2 uses UTF-8 JSON and adds road_route_segments version 1, confirmed generated geometry, input Stop snapshots, ordered via points, stale state, provider attribution/license and optional distance in metres. Older readers must refuse v2. IDs and nulls are preserved. DateSpec values remain structured objects. All payload files have SHA-256 and byte length in manifest.files. Route geometry is provider-derived, never proof of historical travel.\n', 'schema');
+    await addText(input.io, input.stagingRoot, files, 'schemas/v3/README.txt', 'Format v3 adds photo_memory_pins: id, vault_id, trip_id, media_id, longitude (-180..180), latitude (-90..90), optional note (max 10000 characters), created_at, updated_at, deleted_at. Manual photo associations never confirm visits or change capture metadata. Media IDs reference shared immutable originals. Version 2 road_route_segments remain unchanged. Older readers must refuse v3. IDs, tombstones, nulls and structured DateSpec values are preserved. All payload files have SHA-256 and byte length in manifest.files. Route geometry is provider-derived, never proof of historical travel.\n', 'schema');
     await addText(input.io, input.stagingRoot, files, 'journal/index.html', journal(data), 'journal');
     await addText(input.io, input.stagingRoot, files, 'routes/routes.geojson', stableJson(routes(data)), 'route');
     for (const asset of originals) {
@@ -287,8 +298,9 @@ async function readAndVerify(io: ArchiveIO, root: string): Promise<VerifiedArchi
   if (byteLength(manifestText) > MAX_JSON_BYTES) fail('Manifest is too large');
   const raw = object(parseJson(manifestText, 'manifest.json'), 'manifest.json');
   if (raw.export_format !== PORTABLE_FORMAT) fail('This is not a Trip Memory Vault export');
-  if (raw.format_version !== 1 && raw.format_version !== PORTABLE_FORMAT_VERSION) fail(`Unsupported export format version: ${String(raw.format_version)}`);
-  if ((raw.format_version === 1 && Number(raw.schema_version) > 10) || (raw.format_version === 2 && Number(raw.schema_version) < 11)) fail('Archive format/schema version mismatch');
+  if (raw.format_version !== 1 && raw.format_version !== 2 && raw.format_version !== PORTABLE_FORMAT_VERSION) fail(`Unsupported export format version: ${String(raw.format_version)}`);
+  if ((raw.format_version === 1 && Number(raw.schema_version) > 10) || (raw.format_version === 2 && Number(raw.schema_version) !== 11)
+    || (raw.format_version === 3 && Number(raw.schema_version) < 12)) fail('Archive format/schema version mismatch');
   if(!Number.isSafeInteger(raw.schema_version)||Number(raw.schema_version)<1||Number(raw.schema_version)>migrations.length)fail(`Unsupported archive schema version: ${String(raw.schema_version)}`);
   if (!uuidPattern.test(String(object(raw.vault, 'manifest.vault').id))) fail('Manifest vault ID is invalid');
   if (!Array.isArray(raw.files)) fail('Manifest files list is missing');
@@ -304,7 +316,8 @@ async function readAndVerify(io: ArchiveIO, root: string): Promise<VerifiedArchi
     total += Number(row.bytes); if (total > MAX_ARCHIVE_BYTES) fail('Archive declared size is too large');
     return { path, sha256: String(row.sha256), bytes: Number(row.bytes), kind: row.kind as FileKind };
   });
-  const archiveNames = names.filter(name => raw.format_version !== 1 || name !== 'road_route_segments');
+  const archiveNames = names.filter(name => supportedEntity(name,Number(raw.format_version)));
+  if (raw.format_version !== 3 && (seen.has(entitySpecs.photo_memory_pins.path) || object(raw.counts,'counts').photo_memory_pins !== undefined)) fail('Photo memories require portable format v3');
   if (raw.format_version === 1 && (seen.has(entitySpecs.road_route_segments.path) || object(raw.counts,'counts').road_route_segments !== undefined)) fail('Road routes require portable format v2');
   for (const name of archiveNames) if (!seen.has(entitySpecs[name].path)) fail(`Required file is missing: ${entitySpecs[name].path}`);
   for (const file of files) {
@@ -313,6 +326,7 @@ async function readAndVerify(io: ArchiveIO, root: string): Promise<VerifiedArchi
   }
   const data = {} as Record<EntityName, Row[]>;
   data.road_route_segments = [];
+  data.photo_memory_pins = [];
   for (const name of archiveNames) {
     const spec = entitySpecs[name]; const entry = files.find(file => file.path === spec.path)!;
     if (entry.bytes > MAX_JSON_BYTES) fail(`${spec.path} is too large`);
@@ -350,7 +364,7 @@ function validateData(manifest: PortableManifest, data: Record<EntityName, Row[]
   if (data.vaults.length !== 1 || data.vaults[0].id !== manifest.vault.id || data.vaults[0].deleted_at !== null) fail('Archive must contain exactly one active matching vault');
   const vaultId = manifest.vault.id;
   for (const name of names) {
-    if (!(manifest.format_version === 1 && name === 'road_route_segments') && manifest.counts?.[name] !== data[name].length) fail(`Manifest count mismatch for ${name}`);
+    if (supportedEntity(name,manifest.format_version) && manifest.counts?.[name] !== data[name].length) fail(`Manifest count mismatch for ${name}`);
     const spec = entitySpecs[name];
     for (const row of data[name]) {
       decodeRow(spec, row);
@@ -359,6 +373,19 @@ function validateData(manifest: PortableManifest, data: Record<EntityName, Row[]
   }
   const tripIds=ids(data.trips,'trips'), placeIds=ids(data.places,'places'), dayIds=ids(data.trip_days,'trip_days'), stopIds=ids(data.stops,'stops');
   const mediaIds=ids(data.media,'media'), companionIds=ids(data.companions,'companions'), chapterIds=ids(data.chapters,'chapters');
+  ids(data.photo_memory_pins,'photo_memory_pins');
+  reference(data.photo_memory_pins,'trip_id',tripIds,'photo_memory_pins');
+  reference(data.photo_memory_pins,'media_id',mediaIds,'photo_memory_pins');
+  for (const pin of data.photo_memory_pins) {
+    if (typeof pin.longitude !== 'number' || !Number.isFinite(pin.longitude) || Math.abs(pin.longitude)>180
+      || typeof pin.latitude !== 'number' || !Number.isFinite(pin.latitude) || Math.abs(pin.latitude)>90
+      || (pin.note !== null && (typeof pin.note !== 'string' || pin.note.length>10000))) fail('Invalid photo memory coordinate or note');
+    for (const field of ['created_at','updated_at','deleted_at']) {
+      if (field==='deleted_at' && pin[field]===null) continue;
+      if (typeof pin[field] !== 'string' || !Number.isFinite(Date.parse(pin[field] as string))) fail('Invalid photo memory timestamp');
+    }
+    if (pin.deleted_at===null && data.media.find(m=>m.id===pin.media_id)?.deleted_at!==null) fail('Photo memory references deleted media');
+  }
   const dreamIds=ids(data.dream_destinations,'dream_destinations'), suggestionIds=ids(data.reconstruction_history,'reconstruction_history');
   ids(data.vaults,'vaults'); ids(data.trip_media,'trip_media'); ids(data.trip_companions,'trip_companions'); ids(data.trip_chapters,'trip_chapters'); ids(data.dream_visits,'dream_visits');
   reference(data.trip_days,'trip_id',tripIds,'trip_days');
@@ -406,7 +433,7 @@ function validateData(manifest: PortableManifest, data: Record<EntityName, Row[]
     const file=manifest.files.find(item=>item.path===path && item.kind==='media-original');
     if(!file || file.sha256!==media.sha256 || file.bytes!==media.byte_size) fail(`Original media entry is missing for ${String(media.id)}`);
   }
-  for(const name of names)if(!(manifest.format_version===1&&name==='road_route_segments')&&manifest.files.find(item=>item.path===entitySpecs[name].path)?.kind!=='data')fail(`Invalid file kind for ${entitySpecs[name].path}`);
+  for(const name of names)if(supportedEntity(name,manifest.format_version)&&manifest.files.find(item=>item.path===entitySpecs[name].path)?.kind!=='data')fail(`Invalid file kind for ${entitySpecs[name].path}`);
   if(manifest.files.filter(item=>item.kind==='media-original').length!==data.media.length)fail('Archive contains unexpected original media entries');
   if (manifest.media_count !== data.media.length || manifest.total_media_bytes !== data.media.reduce((sum,row)=>sum+Number(row.byte_size),0)) fail('Manifest media summary mismatch');
 }
@@ -459,6 +486,7 @@ export async function restorePortableArchive(input: { database: LocalDatabase; c
       await insertRows(connection,'media',verified.data.media,row=>patched(row,{deleted_at:null}));
       for(const media of verified.data.media) await connection.runAsync(`INSERT INTO local_media_files(media_id,vault_id,variant,relative_path,state,bytes,pinned,last_access_at,checksum,recipe_version,width,height) VALUES(?,?,'original',?,'available',?,1,?,?,NULL,?,?)`,sqlValue(media,'id'),archiveId,mediaPath(String(media.sha256),String(media.extension)),sqlValue(media,'byte_size'),sqlValue(media,'updated_at'),sqlValue(media,'sha256'),sqlValue(media,'width'),sqlValue(media,'height'));
       await insertRows(connection,'trip_media',verified.data.trip_media);
+      await insertRows(connection,'photo_memory_pins',verified.data.photo_memory_pins);
       await insertRows(connection,'companions',verified.data.companions,row=>patched(row,{deleted_at:null}));
       await insertRows(connection,'trip_companions',verified.data.trip_companions);
       await insertRows(connection,'chapters',verified.data.chapters,row=>patched(row,{deleted_at:null}));

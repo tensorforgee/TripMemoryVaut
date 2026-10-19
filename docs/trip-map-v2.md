@@ -1128,3 +1128,97 @@ restore test was run.
 **PASS — LIVE ORS PREVIEW VERIFIED**
 
 **READY FOR NEXT STEP**
+
+## Arbitrary photo memory pins — 18 October 2026
+
+This section supersedes the earlier deferral of arbitrary photo/memory points.
+Long-press any map coordinate to open **Add photo memory here** with latitude and
+longitude. Choose from existing imported vault media (60-row keyset pages), add
+an optional note and explicitly save. Selection never invokes the system importer,
+copies an original, creates TripMedia, or alters source evidence/corrections.
+Coordinates are manual associations, not confirmed visits or capture locations.
+No Stop, Place, route geometry, GPS permission or location inference is involved.
+
+Migration **12**, `photo_memory_pins`, stores stable vault/trip/media ownership,
+coordinates, note and audit/tombstone timestamps. Composite foreign keys, live
+parent guards and coordinate/note constraints protect writes. Trip trash hides
+pins through the parent without changing their independent deletion state.
+Deleting a pin retains Media and every other placement. Live pins protect Media
+from trash, and references prevent physical deletion. The existing explicit vault
+reset deletion order includes pins; no reset was used during device testing.
+
+Local thumbnail markers render above the existing MapTiler/route layers and are
+included in Fit trip. Native `Marker.onPress` opens the thumbnail, note and display
+photo viewer. Edit can change the photo/note; Reposition returns to the map for a
+second deliberate long-press and Save. Cancel/navigation protects unsaved edits.
+The Photo memories list also exposes overlapping pins and works if rendering fails.
+Identical coordinates are allowed. Photos remain separate from numbered Stops,
+visited-place statistics and route generation. Native view markers are used for
+photo thumbnails; very large pin collections have not been performance-qualified.
+
+Offline cold launch reads SQLite and app-owned derivatives, retaining markers,
+notes and viewer on the bundled overview. Detailed offline streets are not
+promised. Missing previews use placeholders and the existing repair worker.
+Portable **v3** exports pin records, manual Point features and readable journal
+entries. Shared media is exported once; v1/v2 restores create no invented pins.
+Hosted ORS preview behavior and the prohibition on saving new hosted ORS geometry
+are unchanged. No new dependencies or permissions were added.
+
+### Verification
+
+- TypeScript and **128 relevant host tests** pass: database/migrations, media,
+  Trip Map/road routes, global map, archives, maintenance and routing privacy.
+  Tests include zero/pole/dateline coordinates, invalid values, ownership,
+  deleted parents, duplicate coordinates, stale editors, pagination, reopen,
+  immutable evidence, media retention, v1/v2 compatibility and v3 round trips.
+- Signed release APK/AAB build passed (879 Gradle tasks; final build 3m 24s).
+  The existing artifact verifier passed with the locally installed bundletool:
+  signatures, manifest restrictions, four ABI sets and 16 KiB 64-bit alignment.
+  The initial wrapper lacked `TMV_BUNDLETOOL_JAR`; running its verifier with
+  `.expo/bundletool-all-1.18.1.jar` completed those checks successfully.
+- Samsung **SM-M146B / RZCW3261ZBJ / Android 15**: matching-signer `adb install -r`,
+  long-press coordinate, empty-vault photo chooser, imported-photo selection,
+  explicit save, thumbnail marker, marker tap, note, viewer, edit/reposition,
+  accessible list, cold offline relaunch and pin removal all passed. Native
+  `Marker.onPress` fixed the nested Pressable tap failure found on the first build;
+  the corrected build was installed and retested.
+- The test used an imported screenshot of this session's synthetic
+  `TEST-MapTiler-UA-Verification` map. Android's picker selected that screenshot
+  rather than the separately staged rectangle fixture; no personal imagery was
+  selected. The test pin was removed afterward, and the photo still opened from
+  the existing gallery. The four mapped Stops remained unchanged.
+- Wi-Fi and mobile data were disabled for the release cold-launch check, then
+  restored to their original enabled states. No Metro was required. Local
+  thumbnail, moved coordinate, edited note and full display image reopened offline.
+- Android exported and verified a v3 package through the system folder picker.
+  That exact package was inspected and restored into **isolated host SQLite**:
+  pin ID, coordinate, note, Media reference and original checksum matched;
+  SQLite integrity and foreign keys passed. A native restore into the phone's
+  populated vault was not attempted. Existing vault data was never cleared.
+- Inspected app-process logs contained no fatal exception, native fatal signal
+  or React Native JavaScript error. `git diff --check` passes. No commit or push.
+
+Ignored evidence is under `.expo/photo-memory-*`, including host logs, build and
+artifact logs, Samsung screenshots/UI dumps and the device-produced archive.
+The phone retains the imported test screenshot and the verification export in
+`TMV-Pin-Verification-18Oct`; its test pin is tombstoned. Existing content is intact.
+
+### Files changed
+
+| Area | Files |
+| --- | --- |
+| Map interaction, picker, markers and viewer | `src/features/map/TripMapScreen.tsx`, `src/features/map/PhotoMemories.tsx`, `src/features/map/useTripMap.ts` |
+| Pin validation and SQLite repository | `src/features/map/photo-memory-model.ts`, `src/features/map/photo-memory-repository.ts` |
+| Forward migration and repository wiring | `src/core/database/migrations/0012-photo-memory-pins.ts`, `src/core/database/migrate.ts`, `src/core/database/open.ts` |
+| Reference-safe explicit reset order | `src/features/settings/reset-database.ts` |
+| Portable v3 writer, validator, journal, GeoJSON and restore | `src/services/archive/portable.ts` |
+| Focused tests and current-version expectations | `tests/step7/photo-memory-pins.test.mjs`, `tests/step7/road-routes.test.mjs`, `tests/step12/archive.test.mjs`, `tests/step1/database.test.mjs`, `tsconfig.tests.json` |
+| Architecture and compatibility documentation | `docs/architecture.md`, `docs/portable-vault.md`, `docs/trip-map-v2.md` |
+
+No remaining blocker was found for this scoped feature. Limits: pin collection
+scale and native restore of a pin-bearing package on the Samsung were not tested;
+the actual Samsung export was restored with real SQLite/files on the host instead.
+
+**PASS — MAP MEMORY PINS VERIFIED**
+
+**READY FOR NEXT STEP**

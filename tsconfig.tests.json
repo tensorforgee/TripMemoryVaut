@@ -20,6 +20,8 @@
     "src/features/route/repository.ts",
     "src/features/route/forms.ts",
     "src/features/map/model.ts",
+    "src/features/map/photo-memory-model.ts",
+    "src/features/map/photo-memory-repository.ts",
     "src/features/road-route/model.ts",
     "src/features/road-route/provider.ts",
     "src/features/road-route/proposals.ts",

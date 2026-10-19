@@ -198,14 +198,14 @@ test('antimeridian splitting never draws across the world and geometry bounds in
   assert.equal(STOPS_ONLY_LABEL,'Stops only — exact road unknown');
 });
 
-test('schema 10 upgrades to 11 without changing original Stops/Places or prior migration checksums',async t=>{
+test('schema 10 upgrades through current schema without changing original Stops/Places or prior migration checksums',async t=>{
   const f=await fixture(t,false);await migrateDatabase(f.database,f.services,migrations.slice(0,10));
   const vault=await getOrCreateVault(f.database,randomUUID),trips=new TripRepository(f.database,vault.id,randomUUID),routes=new RouteRepository(f.database,vault.id,randomUUID);
   const trip=await trips.createTripDraft({title:'Existing'});await routes.createPlaceAndAddStop(trip.id,{name:'Unknown historical location'});
   const before=await routes.listStops(trip.id),history=await f.connection.getAllAsync('SELECT * FROM schema_migrations ORDER BY version');
   await migrateDatabase(f.database,f.services);assert.deepEqual(await routes.listStops(trip.id),before);
   assert.deepEqual((await f.connection.getAllAsync('SELECT * FROM schema_migrations ORDER BY version')).slice(0,10),history);
-  assert.equal((await f.connection.getFirstAsync('PRAGMA user_version')).user_version,11);
+  assert.equal((await f.connection.getFirstAsync('PRAGMA user_version')).user_version,12);
   assert.equal((await f.connection.getFirstAsync('SELECT count(*) n FROM road_route_segments')).n,0);
   await migrateDatabase(f.database,f.services);assert.deepEqual(await routes.listStops(trip.id),before);
 });
@@ -252,9 +252,9 @@ async function manifestWrite(io,manifest) {
   await io.writeText('archive','COMPLETE.json',JSON.stringify({manifest_sha256:await io.sha256Text(text)}));
 }
 
-test('portable v2 preserves road geometry/vias/provenance and roundtrips into isolated host SQLite',async t=>{
+test('portable v3 preserves road geometry/vias/provenance and roundtrips into isolated host SQLite',async t=>{
   const x=await seed(t),p={...proposal(x.i),viaPoints:[{id:randomUUID(),coordinate:[77.013,31.013]}]};await x.roads.confirm(x.trip.id,p,null);
-  const io=await archive(x),inspection=await inspectPortableRestore(io,'archive');assert.equal(inspection.manifest.format_version,2);
+  const io=await archive(x),inspection=await inspectPortableRestore(io,'archive');assert.equal(inspection.manifest.format_version,3);
   assert.equal(inspection.manifest.counts.road_route_segments,1);
   const geo=JSON.parse(await io.readText('archive','routes/routes.geojson')).features.find(f=>f.properties.kind==='generated_road');
   assert.deepEqual(geo.geometry,p.geometry);assert.equal(geo.properties.provenance.license,ORS_LICENSE);
@@ -274,7 +274,7 @@ test('portable inspection refuses malformed geometry, license loss, stale unmark
 
 test('portable v1 remains readable, but cannot smuggle road records into an old format',async t=>{
   const x=await seed(t),io=await archive(x),m=JSON.parse(await io.readText('archive','manifest.json'));
-  m.format_version=1;m.schema_version=10;delete m.counts.road_route_segments;m.files=m.files.filter(f=>f.path!=='data/road-route-segments.json');
+  m.format_version=1;m.schema_version=10;delete m.counts.road_route_segments;delete m.counts.photo_memory_pins;m.files=m.files.filter(f=>f.path!=='data/road-route-segments.json' && f.path!=='data/photo-memory-pins.json');
   for(const f of m.files.filter(f=>f.kind==='data')) {const d=JSON.parse(await io.readText('archive',f.path));d.format_version=1;const text=JSON.stringify(d);await io.writeText('archive',f.path,text);f.bytes=Buffer.byteLength(text);f.sha256=await io.sha256Text(text);}
   await manifestWrite(io,m);assert.equal((await inspectPortableRestore(io,'archive')).manifest.format_version,1);
   m.counts.road_route_segments=1;await manifestWrite(io,m);await assert.rejects(inspectPortableRestore(io,'archive'),/require portable/);

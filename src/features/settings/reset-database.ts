@@ -2,6 +2,7 @@ import type { LocalDatabase } from '../../core/database/database';
 import { getOrCreateVault, type Vault } from '../../core/database/vault';
 
 const deletionStatements = [
+  'DELETE FROM photo_memory_pins',
   'DELETE FROM road_route_segments',
   'DELETE FROM dream_visits', 'DELETE FROM dream_destinations',
   'DELETE FROM trip_chapters', 'DELETE FROM trip_companions',
