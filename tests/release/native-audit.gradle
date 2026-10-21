@@ -1,0 +1,15 @@
+// Disposable release runtime. Never install this unless aapt confirms this ID.
+gradle.beforeProject { app ->
+    if (app.path != ':app') return
+    app.plugins.withId('com.android.application') {
+        app.androidComponents.finalizeDsl { android ->
+            android.defaultConfig.applicationId = 'com.tripmemoryvault.finalqa'
+        }
+    }
+    app.afterEvaluate {
+        if (app.state.failure != null) return
+        if (app.findProperty('tmvQaUi') != 'true') {
+            app.extensions.getByName('react').entryFile = new File(app.rootProject.projectDir.parentFile, 'tests/release/native-audit-entry.tsx')
+        }
+    }
+}

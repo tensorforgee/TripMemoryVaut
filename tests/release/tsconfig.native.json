@@ -1,0 +1,4 @@
+{
+  "extends": "../../tsconfig.json",
+  "include": ["native-audit.ts", "native-audit-entry.tsx"]
+}
