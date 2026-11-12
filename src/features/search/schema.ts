@@ -45,12 +45,20 @@ JOIN media m ON m.id=tm.media_id AND m.vault_id=tm.vault_id JOIN vaults v ON v.i
 WHERE tm.deleted_at IS NULL AND tm.caption IS NOT NULL AND t.deleted_at IS NULL
   AND m.deleted_at IS NULL AND v.deleted_at IS NULL`;
 
+// Migration 10 imports the frozen v1 constants above; never alter them.
+export const CURRENT_SEARCH_INDEX_VERSION = 2;
+export const currentSearchDocumentSelect = `${searchDocumentSelect}
+UNION ALL
+SELECT n.vault_id,'memory',n.id,n.trip_id,n.title,n.body
+FROM memories n JOIN trips t ON t.id=n.trip_id AND t.vault_id=n.vault_id JOIN vaults v ON v.id=n.vault_id
+WHERE n.deleted_at IS NULL AND t.deleted_at IS NULL AND v.deleted_at IS NULL`;
+
 export async function rebuildSearchIndex(connection: SqlConnection, vaultId: string, rebuiltAt = new Date().toISOString()): Promise<void> {
   await connection.runAsync('DELETE FROM search_documents WHERE vault_id=?', vaultId);
   await connection.runAsync(`INSERT INTO search_documents(vault_id,entity_type,entity_id,trip_id,title,body)
-    SELECT vault_id,entity_type,entity_id,trip_id,title,body FROM (${searchDocumentSelect}) documents
+    SELECT vault_id,entity_type,entity_id,trip_id,title,body FROM (${currentSearchDocumentSelect}) documents
     WHERE vault_id=? ORDER BY entity_type,entity_id`, vaultId);
   await connection.runAsync(`INSERT INTO search_index_state(vault_id,index_version,rebuilt_at) VALUES(?,?,?)
     ON CONFLICT(vault_id) DO UPDATE SET index_version=excluded.index_version,rebuilt_at=excluded.rebuilt_at`,
-  vaultId, SEARCH_INDEX_VERSION, rebuiltAt);
+  vaultId, CURRENT_SEARCH_INDEX_VERSION, rebuiltAt);
 }

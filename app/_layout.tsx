@@ -34,6 +34,7 @@ export default function RootLayout() {
       <Stack.Screen name="trips/[tripId]/edit" options={{ title: 'Edit trip', header: tripHeader }} />
       <Stack.Screen name="trips/[tripId]/route" options={{ title: 'Route / Stops', header: tripHeader }} />
       <Stack.Screen name="trips/[tripId]/map" options={{ title: 'Trip Map', headerShown: false }} />
+      <Stack.Screen name="trips/[tripId]/memories" options={{ title: 'Memories', header: tripHeader }} />
       <Stack.Screen name="trips/[tripId]/timeline" options={{ title: 'Timeline', header: tripHeader }} />
       <Stack.Screen name="trips/[tripId]/photos" options={{ title: 'Photos', header: tripHeader }} />
       <Stack.Screen name="trips/[tripId]/reconstruct" options={{ title: 'Reconstruction', header: tripHeader }} />

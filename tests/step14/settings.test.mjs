@@ -131,3 +131,11 @@ test('reset removes canonical and derived rows and leaves an initializable empty
   assert.equal((await f.connection.getFirstAsync('SELECT count(*) count FROM search_index_state')).count,1);
   assert.equal((await f.connection.getFirstAsync('PRAGMA user_version')).user_version,migrations.length);
 });
+
+
+test('integrity and search rebuild include written memories',async t=>{
+ const {MemoryRepository}=await import('../../.expo/step1-tests/features/memories/repository.js');
+ const f=await fixture(t),files=new Files(),ids=await seed(f,files);
+ await new MemoryRepository(f.database,f.vault.id,randomUUID).save(ids.trip,{title:'Written memory',body:'Local recollection',dates:null,dayId:null,stopId:null,mediaIds:[ids.media]});
+ const report=await service(f,files).checkIntegrity();assert.equal(report.lines.find(l=>l.key==='search').status,'pass');
+});
