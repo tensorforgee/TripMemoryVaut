@@ -29,6 +29,9 @@ export default function TripDetailScreen() {
       <Text style={styles.text}>{trip.summary || 'No summary yet.'}</Text>
       <RouteSection tripId={trip.id} />
       <Action title="Trip Map" onPress={() => router.push(`/trips/${trip.id}/map`)} />
+      <Text style={styles.section}>Memories</Text>
+      <Text style={styles.text}>Written recollections and attached vault photos.</Text>
+      <Action title="Browse / create memories" onPress={() => router.push(`/trips/${trip.id}/memories`)} />
       <TimelineSection tripId={trip.id} />
       <PhotosSection tripId={trip.id} />
       <TripOrganizationSections tripId={trip.id} />

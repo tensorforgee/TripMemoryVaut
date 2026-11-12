@@ -2,10 +2,10 @@ import type { LocalDatabase, SqlConnection } from '../../core/database/database'
 import { parseDateSpec } from '../../domain/date-spec';
 import { ValidationError, uuid } from '../../domain/validation';
 import { dateLabel } from '../trips/presentation';
-import { rebuildSearchIndex, SEARCH_INDEX_VERSION } from './schema';
+import { rebuildSearchIndex, CURRENT_SEARCH_INDEX_VERSION } from './schema';
 
-type DocumentType = 'trip' | 'place' | 'stop' | 'trip_day' | 'companion' | 'chapter' | 'dream' | 'trip_media';
-export type SearchEntityType = 'trip' | 'place' | 'stop' | 'tripDay' | 'companion' | 'chapter' | 'dream' | 'mediaCaption';
+type DocumentType = 'trip' | 'place' | 'stop' | 'trip_day' | 'companion' | 'chapter' | 'dream' | 'trip_media' | 'memory';
+export type SearchEntityType = 'trip' | 'place' | 'stop' | 'tripDay' | 'companion' | 'chapter' | 'dream' | 'mediaCaption' | 'memory';
 export type SearchResult = {
   entityType: SearchEntityType;
   entityId: string;
@@ -120,6 +120,8 @@ async function resolve(connection: SqlConnection, vaultId: string, candidates: C
     WHERE tm.vault_id=? AND tm.id IN (ENTITY_IDS) AND tm.deleted_at IS NULL AND tm.caption IS NOT NULL
       AND t.deleted_at IS NULL AND m.deleted_at IS NULL`);
 
+  const memories = await get<{ id: string; trip_id: string; title: string; body: string; trip_title: string }>('memory', `SELECT n.id,n.trip_id,n.title,n.body,t.title trip_title FROM memories n
+    JOIN trips t ON t.id=n.trip_id AND t.vault_id=n.vault_id WHERE n.vault_id=? AND n.id IN (ENTITY_IDS) AND n.deleted_at IS NULL AND t.deleted_at IS NULL`);
   const output: SearchResult[] = [];
   for (const item of candidates) {
     if (item.entity_type === 'trip') {
@@ -157,6 +159,11 @@ async function resolve(connection: SqlConnection, vaultId: string, candidates: C
       const detail = excerpt(row.note ?? row.location_text);
       output.push({ entityType: 'dream', entityId: row.id, tripId: null, primaryTitle: row.name,
         subtitle: `${row.dream_status}${detail ? ` · ${detail}` : ''}`, contextLabel: null, navigationTarget: `/dreams/${row.id}` });
+    } else if (item.entity_type === 'memory') {
+      const row = memories.get(item.entity_id); if (!row) continue;
+      output.push({ entityType: 'memory', entityId: row.id, tripId: row.trip_id, primaryTitle: row.title,
+        subtitle: `${row.trip_title} · ${excerpt(row.body)}`, contextLabel: null,
+        navigationTarget: `/trips/${row.trip_id}/memories?memoryId=${row.id}` });
     } else {
       const row = captions.get(item.entity_id); if (!row) continue;
       output.push({ entityType: 'mediaCaption', entityId: row.id, tripId: row.trip_id, primaryTitle: row.trip_title,
@@ -204,5 +211,5 @@ export class SearchRepository {
       'SELECT index_version FROM search_index_state WHERE vault_id=?', this.vaultId))?.index_version ?? null);
   }
 
-  static readonly indexVersion = SEARCH_INDEX_VERSION;
+  static readonly indexVersion = CURRENT_SEARCH_INDEX_VERSION;
 }

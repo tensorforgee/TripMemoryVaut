@@ -12,8 +12,10 @@ import { searchSchema } from './migrations/0010-search';
 import { roadRoutesSchema } from './migrations/0011-road-routes';
 import { photoMemoryPinsSchema } from './migrations/0012-photo-memory-pins';
 
+import { travelMemoriesSchema } from './migrations/0013-travel-memories';
+
 export type Migration = { readonly version: number; readonly sql: string };
-export const migrations: readonly Migration[] = [{ version: 1, sql: initialSchema }, { version: 2, sql: placesStopsSchema }, { version: 3, sql: tripDaysSchema }, { version: 4, sql: mediaSchema }, { version: 5, sql: mediaGuardsSchema }, { version: 6, sql: reconstructionSchema }, { version: 7, sql: reconstructionProvenanceSchema }, { version: 8, sql: companionsChaptersSchema }, { version: 9, sql: dreamPlacesSchema }, { version: 10, sql: searchSchema }, { version: 11, sql: roadRoutesSchema }, { version: 12, sql: photoMemoryPinsSchema }];
+export const migrations: readonly Migration[] = [{ version: 1, sql: initialSchema }, { version: 2, sql: placesStopsSchema }, { version: 3, sql: tripDaysSchema }, { version: 4, sql: mediaSchema }, { version: 5, sql: mediaGuardsSchema }, { version: 6, sql: reconstructionSchema }, { version: 7, sql: reconstructionProvenanceSchema }, { version: 8, sql: companionsChaptersSchema }, { version: 9, sql: dreamPlacesSchema }, { version: 10, sql: searchSchema }, { version: 11, sql: roadRoutesSchema }, { version: 12, sql: photoMemoryPinsSchema }, { version: 13, sql: travelMemoriesSchema }];
 
 export interface MigrationBackup {
   path: string;

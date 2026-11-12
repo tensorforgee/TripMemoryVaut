@@ -1,9 +1,20 @@
 # Portable vault export format v1
 
-**Current writer: format v3, schema 12.** The original v1 contract below remains
+**Current writer: format v4, schema 13.** V4 adds required `data/memories.json`
+and `data/memory-media.json`, matching manifest counts, and `schemas/v4/README.txt`.
+Written memories preserve titles, bodies, nullable/unknown/approximate DateSpecs,
+same-trip section/Stop anchors, timestamps and tombstones. Attachment rows preserve
+their own IDs/timestamps/tombstones and reference shared Media originals. The HTML
+journal includes escaped memory text and links to attached originals. In-progress
+editor drafts are local recovery state and excluded from portable finalized data.
+Restore accepts v1/v2/v3 with empty written-memory tables. Unsupported-version
+smuggling, broken/cross-trip context, invalid dates and dangling attachments fail
+read-only validation. Earlier readers must reject v4. ORS records are unchanged.
+
+The original v1 contract below remains
 historical documentation. V2 added confirmed road segments. V3 adds required
 `data/photo-memory-pins.json` and `manifest.counts.photo_memory_pins`; the schema
-description is `schemas/v3/README.txt`. Current readers accept v1, v2 and v3.
+description was `schemas/v3/README.txt`. Current readers accept v1, v2, v3 and v4.
 V1/v2 omit pins and restore an empty pin table; they cannot carry undeclared pin
 records. Readers predating v3 reject the new version instead of dropping pins.
 

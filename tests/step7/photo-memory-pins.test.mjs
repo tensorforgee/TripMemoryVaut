@@ -76,7 +76,7 @@ test('migration 12 preserves schema 11 data and checksums; explicit disposable r
   await migrateDatabase(f.database,f.services);
   assert.deepEqual((await f.connection.getAllAsync('SELECT * FROM schema_migrations')).slice(0,11),history);
   assert.deepEqual(await trips.getTripById(trip.id),trip);
-  assert.equal((await f.connection.getFirstAsync('PRAGMA user_version')).user_version,12);
+  assert.equal((await f.connection.getFirstAsync('PRAGMA user_version')).user_version,migrations.length);
   const x=await seed(t);await x.pins.save(x.trip.id,{mediaId:x.mediaId,coordinate:[0,0],note:null});
   await resetVaultContents(x.database,randomUUID);assert.deepEqual(await x.connection.getAllAsync('PRAGMA foreign_key_check'),[]);
 });

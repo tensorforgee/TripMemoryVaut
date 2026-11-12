@@ -19,7 +19,7 @@ for (let version = 1; version < migrations.length; version++) {
     const columns = Object.keys(before[0]).join(',');
     assert.deepEqual(await f.connection.getAllAsync(`SELECT ${columns} FROM trips`), before);
     assert.equal((await trips.getTripById(trip.id)).dates.certainty, 'unknown');
-    assert.equal((await f.connection.getFirstAsync('PRAGMA user_version')).user_version, 12);
+    assert.equal((await f.connection.getFirstAsync('PRAGMA user_version')).user_version, migrations.length);
     assert.deepEqual(await f.connection.getAllAsync('PRAGMA foreign_key_check'), []);
     assert.equal((await f.connection.getFirstAsync('PRAGMA integrity_check')).integrity_check, 'ok');
     assert.deepEqual(await f.connection.getAllAsync('SELECT * FROM photo_memory_pins'), []);

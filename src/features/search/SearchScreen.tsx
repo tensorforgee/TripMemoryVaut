@@ -8,7 +8,7 @@ import { message, styles } from '../trips/ui';
 
 const labels: Record<SearchResult['entityType'], string> = {
   trip: 'Trip', place: 'Place', stop: 'Stop note', tripDay: 'Trip section', companion: 'Companion',
-  chapter: 'Chapter', dream: 'Dream', mediaCaption: 'Photo caption',
+  memory: 'Memory', chapter: 'Chapter', dream: 'Dream', mediaCaption: 'Photo caption',
 };
 
 export default function SearchScreen() {

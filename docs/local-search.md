@@ -13,11 +13,20 @@ Search is a derived, offline view over canonical SQLite rows. It uses no network
 - Dream: Place name, note, and location context while the Dream is active and unarchived.
 - TripMedia: user caption only, only while its Trip, placement, and Media are active.
 
-The current schema has no Memory or Tag tables, so there are no canonical Memory/Tag rows to index in this step. Dates, coordinates, EXIF, filenames, reconstruction proposals, rejected suggestions, and binary media are not indexed. DateSpec is displayed as context for Trip results but is deliberately not searchable; this prevents unknown or approximate dates from becoming fabricated exact dates.
+Migration 13 adds Memory title and body, with results opening the selected memory
+within its Trip. Draft editor text is not indexed. There is still no Tag table.
+Dates, coordinates, EXIF, filenames, reconstruction proposals, rejected
+suggestions, and binary media are not indexed. DateSpec is displayed as context
+for Trip results but is deliberately not searchable.
 
 ## Schema and synchronization
 
 Migration 10 creates vault-scoped `search_documents`, external-content `search_fts` (FTS5 with `unicode61`, diacritic removal, and 2/3-character prefix indexes), and `search_index_state` at index version 1. Search-document triggers use the documented FTS delete/insert protocol. Canonical-table triggers refresh or remove documents in the same transaction as every create, edit, archive, trash, restore, or detach operation.
+
+Migration 13 rebuilds the derived tables/triggers at index version 2 to include
+Memories. The original migration 10 SQL and its imported v1 constants stay frozen
+for checksum compatibility. Runtime rebuild and integrity checks use the expanded
+projection. Trip trash/restoration and memory edits/removal update FTS atomically.
 
 The migration backfill projects all existing canonical rows in stable `(vault_id, entity_type, entity_id)` order. It is atomic and restart-safe under the migration runner. `SearchRepository.rebuild()` is idempotent and vault-scoped. Portable archives omit all search tables; restore runs a final rebuild from restored canonical rows before commit.
 

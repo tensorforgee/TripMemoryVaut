@@ -1280,3 +1280,44 @@ The existing MapTiler tile-area disclosure applies, while photos and notes stay
 local. ORS preview, confirmation/storage restrictions and saved geometry remain
 unchanged. Portable format v3 preserves pins and their shared Media references;
 v1/v2 imports have no pins. Older readers must reject v3.
+
+## 29. Scoped extension: dedicated travel memories — 12 November 2026
+
+Migration 13 introduces written `memories`, separate from manual map photo pins.
+Each has a stable UUID, required Trip, title, plain-text body, nullable DateSpec,
+audit/tombstone timestamps, and at most one existing same-trip TripDay or Stop
+anchor. A Stop supplies Place context; no independent Place or photo context is
+invented. `kind=memory|note` preserves the single Memory/notes model; this scoped
+UI creates memories. Existing trip summaries, Stop notes, captions and chapter
+descriptions retain their existing meaning and are not migrated into copies.
+
+This milestone extends the baseline Memory with a title and explicit DateSpec.
+Multiple optional photos use stable, tombstoned `memory_media` memberships to
+existing vault Media, including assets imported through another trip. These are
+attachments, not extra contextual anchors or TripMedia placements. No media bytes
+or evidence fields are copied or modified. Physical FKs retain referenced assets;
+active attachments and persisted draft references also prevent media trash.
+
+Trip trash hides memories through the parent and restores their independent
+removal state unchanged. Independent section/Stop removal detaches the anchor,
+preserving written content. Removing a memory tombstones its attachments and
+retains all source photos. Commands use the existing serialized transactions;
+search triggers update FTS within the transaction, then notifications publish.
+Search index version 2 includes memory title/body and direct navigation. Migration
+10's projection/version remain frozen so installed migration checksums survive.
+
+Trip Details adds a Memories section and an existing-stack route for browsing,
+reading, creating and editing. Explicit Save publishes a memory; editor changes
+are separately persisted in `memory_drafts` (one resumable draft per Trip).
+Saved-draft status follows commit. Navigation retains the draft; explicit discard
+requires confirmation. An uncommitted keystroke can still be lost on process kill.
+Memory order is stable creation order; favourites and custom reorder remain future
+work. The four-tab redesign is not part of this milestone.
+
+Portable format v4/schema 13 adds `data/memories.json` and
+`data/memory-media.json`, including tombstones and shared Media references, plus
+written text/dates/photo links in the escaped HTML journal. Editor drafts
+are local recovery state and are not portable finalized memories. Readers retain
+v1/v2/v3 compatibility with empty written-memory tables; earlier readers reject
+v4. Restore stays empty-vault-only and rebuilds FTS before commit. ORS geometry
+persistence, map pins and original metadata are unchanged.
