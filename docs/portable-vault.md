@@ -1,6 +1,6 @@
 # Portable vault export format v1
 
-**Current writer: format v4, schema 13.** V4 adds required `data/memories.json`
+**Current writer: format v4, schema 14.** V4 readers accept schema 13 and 14. V4 adds required `data/memories.json`
 and `data/memory-media.json`, matching manifest counts, and `schemas/v4/README.txt`.
 Written memories preserve titles, bodies, nullable/unknown/approximate DateSpecs,
 same-trip section/Stop anchors, timestamps and tombstones. Attachment rows preserve
@@ -102,3 +102,10 @@ Restore rejects unsupported format/schema versions, malformed or oversized JSON,
 Host coverage includes deterministic export, structured DateSpec/UUID/tombstone preservation, all current relationship families, byte-identical originals, missing-original failure, valid empty-vault round trip, checksum and missing-file rejection, unsupported version, traversal, duplicate IDs, broken FKs, interrupted restore, and nonempty-vault protection. Android verification must additionally exercise the system folder picker, inspect the exported manifest and original hash, restore after a fresh-vault reset, verify Trips/timeline/map/gallery/organization/Dream/Travel Life semantics, force-stop and relaunch offline, and reject a deliberately altered original without changing the destination vault.
 
 The 2026-10-01 Android x86_64 development-build verification completed that cycle with three Trips, four Places, repeated Stops, approximate and unknown dates, one original photo, Companion and Chapter relationships, Dreaming and Visited Dreams, mapped and unmapped Places, and a trashed Trip. The system-picked export was re-inspected successfully; a fresh-vault restore preserved IDs and semantics; the altered-original package was rejected without mutation; and the restored archive, map data, gallery original, and generated thumbnail remained readable after force-stop and offline relaunch, with no JavaScript or native crash.
+
+HEIC extension (schema 14): accepted still HEIC/HEIF originals use the same
+neutral .original package entry and SHA-256 contract. MIME/extension pairs are
+image/heic + heic and image/heif + heif. v4 accepts schema 13 and 14; v1/v2/v3
+compatibility is unchanged. Derived JPEG previews are excluded and rebuilt locally.
+Browsers without HEIC support may not display original links in the HTML journal;
+the original remains downloadable and machine-restorable without conversion.

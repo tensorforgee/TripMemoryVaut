@@ -1,0 +1,13 @@
+gradle.beforeProject { app ->
+    if (app.path != ':app') return
+    app.plugins.withId('com.android.application') {
+        app.androidComponents.finalizeDsl { android ->
+            android.defaultConfig.applicationId = 'com.tripmemoryvault.heicaudit'
+            android.buildTypes.release.debuggable = true
+        }
+    }
+    app.afterEvaluate {
+        if (app.state.failure != null) return
+        app.extensions.getByName('react').entryFile = new File(app.rootProject.projectDir.parentFile, 'tests/heic/entry.tsx')
+    }
+}

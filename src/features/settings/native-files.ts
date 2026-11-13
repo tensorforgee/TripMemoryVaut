@@ -4,7 +4,7 @@ import type { MaintenanceFiles, OwnedFile, OwnedFileKind } from './maintenance';
 import { nativeMediaFiles } from '../../core/media/native-adapter';
 
 const derivative=/^media\/(display\/v1|thumbnails\/v1)\/[0-9a-f]{2}\/[0-9a-f]{64}\.(jpg|png)$/;
-const original=/^media\/originals\/[0-9a-f]{2}\/[0-9a-f]{64}\.(jpg|png)$/;
+const original=/^media\/originals\/[0-9a-f]{2}\/[0-9a-f]{64}\.(jpg|png|heic|heif)$/;
 const staging=/^staging\/[a-zA-Z0-9_-]+\.part$/;
 function kind(path:string):OwnedFileKind|null{return original.test(path)?'original':derivative.test(path)?'derivative':staging.test(path)?'staging':null;}
 

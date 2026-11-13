@@ -11,11 +11,11 @@ forward-only. Earlier migration SQL and the database ledger are unchanged.
 
 ## Format and native boundary
 
-JPEG and still PNG are supported, including PNG transparency. Content signatures,
+JPEG, still PNG (including transparency), and device-decodable HEIC/HEIF are supported. Content signatures,
 PNG animation chunks, decoder success, encoded size (100 MiB) and dimensions
-(100 megapixels) are checked. Unsupported formats including HEIC/HEIF, GIF, WebP,
-AVIF, RAW/DNG and video are rejected explicitly. HEIC has no tested-device matrix
-yet. Motion/Live Photo archival is not supported.
+(100 megapixels) are checked. GIF, WebP, AVIF, RAW/DNG and video are rejected
+explicitly. See the HEIC extension below for device limits. Motion/Live Photo
+archival is not supported.
 
 Android 9/API 28 or newer is currently required for import: ImageDecoder provides
 bounded sizing, orientation and sRGB conversion. Older Android versions receive
@@ -52,7 +52,7 @@ updates of imported evidence; future corrections have separate nullable columns.
 Paths below are relative to `Paths.document/vaults/<vault UUID>/`:
 
 ```
-media/originals/<hash prefix>/<sha256>.jpg|png
+media/originals/<hash prefix>/<sha256>.jpg|png|heic|heif
 media/display/v1/<hash prefix>/<sha256>.jpg|png
 media/thumbnails/v1/<hash prefix>/<sha256>.jpg|png
 staging/<item UUID>.part
@@ -156,3 +156,127 @@ HEIC remain unverified.
 Implementation references: [Expo picker](https://docs.expo.dev/versions/latest/sdk/imagepicker/),
 [Android ImageDecoder](https://developer.android.com/reference/android/graphics/ImageDecoder),
 [AndroidX ExifInterface](https://developer.android.com/reference/androidx/exifinterface/media/ExifInterface).
+
+## HEIC/HEIF extension — 12 November 2026
+
+The audit found format gates in the native signature reader, Media validation,
+SQLite migration 4, media path validation, maintenance file classification and
+portable restore. Existing Expo ImagePicker 57.0.20 uses RawImageExporter at
+quality=1 with editing disabled. The platform photo picker filters image media;
+the additional “Add photos from files” action uses existing Expo FileSystem's
+ACTION_OPEN_DOCUMENT path, image/* filter and scoped grants. Display names come
+from OpenableColumns, not content URI identifiers. No dependency added.
+
+The native reader bounds ISO-BMFF box sizes, checks still HEVC/HEIF brands and
+requires metadata/data boxes, then validates a bounded ImageDecoder decode.
+Sequences and AVIF remain unsupported. A filename, extension or provider MIME
+alone cannot admit a file. HEVC-branded bytes get canonical .heic storage;
+generic mif1 files that decode get .heif. The received filename remains separate.
+Both .heic and .heif input names work regardless of capitalization.
+
+Originals are streamed and SHA-256 checked as before, never converted. The only
+conversion is a derived sRGB JPEG at 2048/320 maximum edges. Existing viewers,
+gallery, memory attachments and pins already read these two shared derivatives.
+Successful registered previews are reused. Failed previews retain the original
+and remain retryable. No extra per-attachment image copy is made.
+
+ExifInterface 1.4.1 parses the original HEIF bytes through the same immutable
+metadata contract: available dates, offsets, GPS, orientation and raw supported
+fields; absent values stay null. Unparsed metadata remains in original bytes.
+Corrections and reconstruction are unchanged; GPS does not confirm any visit.
+Source fidelity remains picker_representation because providers may redact or
+supply representations before our copy. No camera-original guarantee is added.
+
+Migration 14 rebuilds only Media's format constraint, preserving all indexes,
+guards, rows and references. The serialized migration runner takes its usual
+snapshot, disables foreign keys outside BEGIN for this rebuild, checks integrity
+and all foreign keys before commit, and restores enforcement in finally. Applied
+migration SQL/checksums 1–13 are unchanged. Host tests verify populated references,
+triggers, evidence, rollback and enforcement.
+
+Platform decoder support is required for initial import. If ImageDecoder cannot
+decode a profile, importing fails explicitly; no available dependency can generate
+a local preview without decoding the HEIC first. There is no remote conversion
+or bundled software codec fallback. HDR/10-/12-bit, auxiliary images, HEIF alpha,
+Live Photo motion and iOS are not promised. The primary still is previewed; all
+received container bytes are preserved. See [Android format support](https://developer.android.com/media/platform/supported-formats).
+
+Portable writer stays v4; schema 14 extends allowed MIME/extension pairs only.
+Original .original package entries still use application/octet-stream and exact
+checksums. Readers accept v1/v2/v3 and v4 schema 13/14. Older app versions reject
+schema 14 rather than silently dropping the format. Derivatives regenerate after
+restore. No archive layout or format migration is required.
+
+Reproducible Android harness: tests/heic/audit.gradle and entry.tsx build a separate
+com.tripmemoryvault.heicaudit package. Verify that package ID before installing.
+The native suite uses unique disposable databases and never opens vault.sqlite.
+Put the pillow-heif tests/images/heif_other/pug.heic fixture in files/heic-corpus/example.heic
+using run-as. Source: https://github.com/bigcat88/pillow_heif/blob/master/tests/images/heif_other/pug.heic
+SHA-256: 1ddce96766efbfa0f6bdf634bdab26bdeff831393df8d67f4cdc7b7a7afebc67.
+The fixture is downloaded only into ignored .expo/heic-audit; it is not a JPEG
+renamed as HEIC. Build with the documented JDK 17, EXPO_NO_DOTENV=1,
+NODE_ENV=production, :app:assembleRelease -I tests/heic/audit.gradle
+-PtmvUnsignedRelease=true -PreactNativeArchitectures=arm64-v8a. Sign a separate
+copy using the public development key. Do not uninstall or clear the real app.
+
+Additional compatibility probe: pillow-heif
+[tests/images/heif_other/L_exif_xmp_iptc.heic](https://github.com/bigcat88/pillow_heif/blob/master/tests/images/heif_other/L_exif_xmp_iptc.heic),
+downloaded into ignored .expo/heic-audit/metadata.heic and installed as
+files/heic-corpus/metadata.heic. SHA-256:
+0083645511ffdee8acf04973237272678d3eb2554d77bde2adeeca102c220d51.
+This grayscale HEIC failed Android decoding with `getPixels ... invalid input`;
+it is not part of the successful-device matrix. Native IO decode failures now
+map to HEIC_DECODE_FAILED, keeping the error explicit. Metadata verification uses
+the supported iPhone 13 Pro pug fixture instead: EXIF 2023:02:21 14:33:08, +03:00,
+orientation 1 and present GPS. These are fixture facts, not user photo guesses.
+The earlier libheif example.heic probe advertises the hevc sequence brand and is
+rejected by the deliberately conservative still-only brand gate.
+
+### HEIC verification results — 12–13 November 2026
+
+Device b0883334 (OPD2514, Android 17, ARM64), isolated package
+com.tripmemoryvault.heicaudit. The normal com.tripmemoryvault.app version/install
+and update times were unchanged. No app was uninstalled or cleared; archive
+restores used new empty test databases only.
+
+The actual iPhone 13 Pro HEIC fixture imported with .heic and .HEIF names, reused
+one SHA-256 original and two JPEG previews, retained original date/offset/GPS/
+orientation, and rendered thumbnail/full preview through expo-image. Native
+checks covered trip gallery queries, shared Travel Memories and manual pin
+attachments, no automatically confirmed reconstruction Stops, malformed input
+rejection, v4 export/restore checksum equality, regenerated previews and FKs.
+
+Interactive system Photo Picker and ACTION_OPEN_DOCUMENT imports both retained
+HEIC format, then passed the same import/preview/integration/restore checks.
+**Provider fidelity limitation:** on this device, BOTH pickers supplied a
+GPS-redacted representation, even when navigating directly to device storage.
+The source fixture SHA-256 is 1ddce967…febc67; the supplied representation is
+3963a4057efb7c638cfe41f4702c9465c33cc6baf5bfea79679fed52907b8aca.
+Native verification compares the selected source URI against the archived bytes;
+those match exactly, as do exported/restored bytes. Dates/offset/orientation are
+retained; GPS remains null for the provider representation. Direct app-owned
+fixture import retains full original bytes and GPS. The UI explains provider
+redaction; fidelity remains picker_representation. No permission expansion,
+metadata guessing, JPEG substitution or claim of guaranteed camera-original
+access is made. File selection is not advertised as a redaction bypass.
+
+Host: 149 focused tests passed (database/migration, media, reconstruction, maps/
+routes, archives and Travel Memories), including old v1/v2/v3/v4-schema13 restore,
+HEIC/HEIF byte roundtrips, populated migration preservation and rollback.
+TypeScript passes. The isolated Android ARM64 APK builds successfully.
+Evidence is local under ignored .expo/heic-audit/: host-final.log,
+final-native-all.txt (three successful suites: fixture + document + photo picker),
+document-picker-pass.txt, final-rendered.png and build-document-picker.log.
+The earlier hash failures intentionally compared provider data against the
+unredacted fixture; they exposed the redaction above. They are not claimed as
+byte-identical camera-original picker imports. Earlier sequence/grayscale probes
+are excluded from the supported profile matrix and documented above.
+
+The regular ARM64 Expo development APK also passed `:app:assembleDebug` without
+the audit init script (build-development.log; 497 tasks). It was built, not
+installed over the populated production app. The audit APK SHA-256 is
+E144BB3284298D892A96ACB8EEB59A1814440ADE0C415E81ADBCAE49F66A6562.
+The populated migration rollback test was strengthened and rerun: all 21 media
+tests pass (media-final.log), retaining the overall 149-test passing coverage.
+Final `git diff --check` passes. No dependencies, MapTiler/ORS behavior, existing
+applied migrations, commits or pushes were changed/performed.

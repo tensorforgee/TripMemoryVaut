@@ -7,7 +7,7 @@ export type SourceMetadata = {
   warnings: string[];
 };
 export type MediaEvidence = {
-  sha256: string; byteSize: number; mimeType: 'image/jpeg' | 'image/png'; extension: 'jpg' | 'png';
+  sha256: string; byteSize: number; mimeType: 'image/jpeg' | 'image/png' | 'image/heic' | 'image/heif'; extension: 'jpg' | 'png' | 'heic' | 'heif';
   width: number | null; height: number | null; originalFilename: string | null;
   sourceFidelity: 'original_confirmed' | 'picker_representation' | 'unknown';
   sourceMetadata: SourceMetadata; parserVersion: number;
@@ -20,7 +20,7 @@ export function parseMedia(input: unknown): MediaEvidence {
   const v = record(input, 'media');
   keys(v, ['sha256','byteSize','mimeType','extension','width','height','originalFilename','sourceFidelity','sourceMetadata','parserVersion'], 'media');
   if (typeof v.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(v.sha256)) throw new ValidationError('sha256', 'invalid hash');
-  if (!((v.mimeType === 'image/jpeg' && v.extension === 'jpg') || (v.mimeType === 'image/png' && v.extension === 'png'))) throw new ValidationError('format', 'unsupported');
+  if (!((v.mimeType === 'image/jpeg' && v.extension === 'jpg') || (v.mimeType === 'image/png' && v.extension === 'png') || (v.mimeType === 'image/heic' && v.extension === 'heic') || (v.mimeType === 'image/heif' && v.extension === 'heif'))) throw new ValidationError('format', 'unsupported');
   integer(v.byteSize, 'byteSize', 1, 100 * 1024 * 1024);
   if ((v.width === null) !== (v.height === null)) throw new ValidationError('dimensions', 'requires both dimensions');
   if (v.width !== null) { integer(v.width, 'width', 1); integer(v.height, 'height', 1); if ((v.width as number) * (v.height as number) > 100000000) throw new ValidationError('dimensions', 'exceeds pixel limit'); }

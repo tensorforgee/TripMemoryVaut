@@ -13,9 +13,10 @@ import { roadRoutesSchema } from './migrations/0011-road-routes';
 import { photoMemoryPinsSchema } from './migrations/0012-photo-memory-pins';
 
 import { travelMemoriesSchema } from './migrations/0013-travel-memories';
+import { heicSchema } from './migrations/0014-heic';
 
-export type Migration = { readonly version: number; readonly sql: string };
-export const migrations: readonly Migration[] = [{ version: 1, sql: initialSchema }, { version: 2, sql: placesStopsSchema }, { version: 3, sql: tripDaysSchema }, { version: 4, sql: mediaSchema }, { version: 5, sql: mediaGuardsSchema }, { version: 6, sql: reconstructionSchema }, { version: 7, sql: reconstructionProvenanceSchema }, { version: 8, sql: companionsChaptersSchema }, { version: 9, sql: dreamPlacesSchema }, { version: 10, sql: searchSchema }, { version: 11, sql: roadRoutesSchema }, { version: 12, sql: photoMemoryPinsSchema }, { version: 13, sql: travelMemoriesSchema }];
+export type Migration = { readonly version: number; readonly sql: string; readonly rebuildTables?: boolean };
+export const migrations: readonly Migration[] = [{ version: 1, sql: initialSchema }, { version: 2, sql: placesStopsSchema }, { version: 3, sql: tripDaysSchema }, { version: 4, sql: mediaSchema }, { version: 5, sql: mediaGuardsSchema }, { version: 6, sql: reconstructionSchema }, { version: 7, sql: reconstructionProvenanceSchema }, { version: 8, sql: companionsChaptersSchema }, { version: 9, sql: dreamPlacesSchema }, { version: 10, sql: searchSchema }, { version: 11, sql: roadRoutesSchema }, { version: 12, sql: photoMemoryPinsSchema }, { version: 13, sql: travelMemoriesSchema }, { version: 14, sql: heicSchema, rebuildTables: true }];
 
 export interface MigrationBackup {
   path: string;
@@ -76,7 +77,11 @@ export async function migrateDatabase(database: LocalDatabase, services: Migrati
 
     // SQLite's backup API includes committed WAL contents; never copy the DB file.
     const backup = await services.backup(connection);
+    const rebuild = plan.slice(history.length).some(m => m.rebuildTables);
     try {
+      // SQLite requires enforcement off before BEGIN for table rebuilds. This
+      // connection is serialized; all references are checked before commit.
+      if (rebuild) await connection.execAsync('PRAGMA foreign_keys=OFF; PRAGMA legacy_alter_table=ON;');
       await inTransaction(connection, async transaction => {
         if (!hasHistory) await transaction.execAsync(historySchema);
         for (let index = history.length; index < plan.length; index++) {
@@ -97,7 +102,9 @@ export async function migrateDatabase(database: LocalDatabase, services: Migrati
       }
       throw new MigrationError('Migration failed; the pre-migration snapshot was restored', backup.path, error);
     } finally {
-      await backup.close();
+      try {
+        if (rebuild) await connection.execAsync('PRAGMA legacy_alter_table=OFF; PRAGMA foreign_keys=ON;');
+      } finally { await backup.close(); }
     }
   });
 }

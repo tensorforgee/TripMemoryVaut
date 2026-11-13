@@ -158,3 +158,58 @@ test('keyset gallery ordering has no omissions across 60-row boundary',async t=>
   const first=await f.repo.gallery(f.trip.id);const last=first.at(-1);const second=await f.repo.gallery(f.trip.id,{position:last.position,id:last.id});
   assert.equal(first.length,60);assert.equal(second.length,5);assert.deepEqual([...first,...second].map(p=>p.position),Array.from({length:65},(_,i)=>i));
 });
+
+test('HEIC/HEIF native-boundary evidence retains bytes, deduplicates and uses reusable JPEG derivatives',async t=>{
+  for(const ext of ['heic','heif']) {
+    const f=await setup(t);const e={...evidence(),extension:ext,mimeType:`image/${ext}`};
+    // Explicit decoder double: host test asserts storage behavior, not codec support.
+    f.files.inspect=async()=>e;
+    assert.equal(parseMedia(e).extension,ext);
+    assert.throws(()=>parseMedia({...e,mimeType:'image/jpeg'}));
+    await select(f,['plain.jpg','plain.jpg']);await f.pipeline.run();
+    const assets=await f.repo.assets(),photos=await f.repo.gallery(f.trip.id);
+    assert.equal(assets.length,1);assert.equal((await f.repo.items())[1].result,'already_added');
+    assert.ok(assets[0].relative_path.endsWith(`.${ext}`));
+    assert.ok(await f.files.verify(assets[0].relative_path,e.sha256,e.byteSize));
+    assert.ok(photos[0].thumbnail.endsWith('.jpg'));assert.ok(photos[0].display.endsWith('.jpg'));
+    let derived=0;f.files.derive=async()=>{derived++;throw Error('should reuse');};await f.pipeline.run(true);assert.equal(derived,0);
+  }
+});
+
+test('v13 to v14 rebuild preserves populated evidence, every media guard, relationships and FK enforcement',async t=>{
+  const f=await fixture(t,false);await migrateDatabase(f.database,f.services,migrations.slice(0,13));
+  const vault=await getOrCreateVault(f.database,randomUUID),trips=new TripRepository(f.database,vault.id,randomUUID),trip=await trips.createTripDraft({title:'Before HEIC'});
+  const repo=new MediaRepository(f.database,vault.id,randomUUID),files=new Files(join(dirname(f.path),'files'));
+  await repo.select(trip.id,[{uri:'file://'+join(corpus,'plain.jpg'),filename:'plain.jpg'}]);await new ImportPipeline(repo,files).run();
+  const id=(await repo.assets())[0].id,stamp=new Date().toISOString(),memory=randomUUID();
+  await f.connection.runAsync('INSERT INTO photo_memory_pins(id,vault_id,trip_id,media_id,longitude,latitude,created_at,updated_at) VALUES(?,?,?,?,0,0,?,?)',randomUUID(),vault.id,trip.id,id,stamp,stamp);
+  await f.connection.runAsync("INSERT INTO memories(id,vault_id,trip_id,title,body,created_at,updated_at) VALUES(?,?,?,'Title','Text',?,?)",memory,vault.id,trip.id,stamp,stamp);
+  await f.connection.runAsync('INSERT INTO memory_media(id,vault_id,memory_id,media_id,created_at,updated_at) VALUES(?,?,?,?,?,?)',randomUUID(),vault.id,memory,id,stamp,stamp);
+  const tables=['media','trip_media','local_media_files','import_items','photo_memory_pins','memories','memory_media','search_documents'];
+  const before=await Promise.all(tables.map(n=>f.connection.getAllAsync(`SELECT * FROM ${n}`)));
+  const guards=await f.connection.getAllAsync("SELECT name,sql FROM sqlite_schema WHERE type='trigger' ORDER BY name");
+  await migrateDatabase(f.database,f.services);
+  assert.deepEqual(await Promise.all(tables.map(n=>f.connection.getAllAsync(`SELECT * FROM ${n}`))),before);
+  assert.deepEqual(await f.connection.getAllAsync("SELECT name,sql FROM sqlite_schema WHERE type='trigger' ORDER BY name"),guards);
+  assert.equal((await f.connection.getFirstAsync('PRAGMA foreign_keys')).foreign_keys,1);
+  assert.deepEqual(await f.connection.getAllAsync('PRAGMA foreign_key_check'),[]);
+  await assert.rejects(f.connection.runAsync('UPDATE media SET source_metadata_json=? WHERE id=?','{}',id),/immutable/);
+  await assert.rejects(f.connection.runAsync('DELETE FROM media WHERE id=?',id),/FOREIGN KEY/);
+});
+
+test('failed media rebuild restores populated v13 snapshot and re-enables foreign keys',async t=>{
+  const f=await fixture(t,false);await migrateDatabase(f.database,f.services,migrations.slice(0,13));
+  const vault=await getOrCreateVault(f.database,randomUUID),trip=await new TripRepository(f.database,vault.id,randomUUID).createTripDraft({title:'Retain on failure'});
+  const repo=new MediaRepository(f.database,vault.id,randomUUID),files=new Files(join(dirname(f.path),'files'));
+  await repo.select(trip.id,[{uri:'file://'+join(corpus,'plain.jpg'),filename:'plain.jpg'}]);await new ImportPipeline(repo,files).run();
+  const mediaBefore=await f.connection.getAllAsync('SELECT * FROM media'),photosBefore=await repo.gallery(trip.id);
+  const before=await f.connection.getAllAsync('SELECT * FROM schema_migrations');
+  const broken=[...migrations.slice(0,13),{...migrations[13],sql:migrations[13].sql+'; INVALID SQL;'}];
+  await assert.rejects(migrateDatabase(f.database,f.services,broken),/snapshot was restored/);
+  assert.deepEqual(await f.connection.getAllAsync('SELECT * FROM schema_migrations'),before);
+  assert.deepEqual(await f.connection.getAllAsync('SELECT * FROM media'),mediaBefore);
+  assert.deepEqual(await repo.gallery(trip.id),photosBefore);
+  for(const asset of await repo.assets())assert.ok(await files.verify(asset.relative_path,asset.sha256,asset.byte_size));
+  assert.equal((await f.connection.getFirstAsync('PRAGMA foreign_keys')).foreign_keys,1);
+  assert.equal((await f.connection.getFirstAsync('PRAGMA user_version')).user_version,13);
+});

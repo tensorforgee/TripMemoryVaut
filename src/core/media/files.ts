@@ -1,8 +1,9 @@
 import type { MediaEvidence } from '../../domain/media';
 export type Variant = 'original' | 'display' | 'thumbnail';
 export function mediaPath(hash: string, extension: string, variant: Variant = 'original'): string {
-  if (!/^[a-f0-9]{64}$/.test(hash) || !['jpg','png'].includes(extension)) throw new Error('Invalid media path');
+  if (!/^[a-f0-9]{64}$/.test(hash) || !['jpg','png','heic','heif'].includes(extension)) throw new Error('Invalid media path');
   const dir = variant === 'original' ? 'originals' : variant === 'display' ? 'display/v1' : 'thumbnails/v1';
+  if (variant !== 'original' && (extension === 'heic' || extension === 'heif')) extension = 'jpg';
   return `media/${dir}/${hash.slice(0, 2)}/${hash}.${extension}`;
 }
 export type Derivative = { bytes: number; checksum: string; width: number; height: number };
