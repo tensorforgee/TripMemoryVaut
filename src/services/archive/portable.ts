@@ -304,7 +304,7 @@ async function readAndVerify(io: ArchiveIO, root: string): Promise<VerifiedArchi
   if (raw.export_format !== PORTABLE_FORMAT) fail('This is not a Trip Memory Vault export');
   if (raw.format_version !== 1 && raw.format_version !== 2 && raw.format_version !== 3 && raw.format_version !== PORTABLE_FORMAT_VERSION) fail(`Unsupported export format version: ${String(raw.format_version)}`);
   if ((raw.format_version === 1 && Number(raw.schema_version) > 10) || (raw.format_version === 2 && Number(raw.schema_version) !== 11)
-    || (raw.format_version === 3 && Number(raw.schema_version) !== 12) || (raw.format_version === 4 && Number(raw.schema_version) !== 13)) fail('Archive format/schema version mismatch');
+    || (raw.format_version === 3 && Number(raw.schema_version) !== 12) || (raw.format_version === 4 && ![13,14].includes(Number(raw.schema_version)))) fail('Archive format/schema version mismatch');
   if(!Number.isSafeInteger(raw.schema_version)||Number(raw.schema_version)<1||Number(raw.schema_version)>migrations.length)fail(`Unsupported archive schema version: ${String(raw.schema_version)}`);
   if (!uuidPattern.test(String(object(raw.vault, 'manifest.vault').id))) fail('Manifest vault ID is invalid');
   if (!Array.isArray(raw.files)) fail('Manifest files list is missing');
@@ -459,7 +459,8 @@ function validateData(manifest: PortableManifest, data: Record<EntityName, Row[]
   for (const row of [...data.trips.map(r=>r.dates), ...data.trip_days.map(r=>r.dates).filter(Boolean), ...data.stops.flatMap(r=>[r.dates,r.checkout_dates]).filter(Boolean), ...data.dream_destinations.map(r=>r.added_dates)]) parseDateSpec(row);
   const mediaPaths = new Set<string>();
   for (const media of data.media) {
-    if (!hashPattern.test(String(media.sha256)) || !Number.isSafeInteger(media.byte_size) || Number(media.byte_size) < 1 || Number(media.byte_size) > 104857600 || !['jpg','png'].includes(String(media.extension))) fail('Media metadata is invalid');
+    if (!hashPattern.test(String(media.sha256)) || !Number.isSafeInteger(media.byte_size) || Number(media.byte_size) < 1 || Number(media.byte_size) > 104857600 || !['jpg','png','heic','heif'].includes(String(media.extension))) fail('Media metadata is invalid');
+    if (media.mime_type !== ({jpg:'image/jpeg',png:'image/png',heic:'image/heic',heif:'image/heif'} as Record<string,string>)[String(media.extension)]) fail('Media MIME/extension mismatch');
     const path=portableMediaPath(String(media.sha256)); if(mediaPaths.has(path)) fail('Media paths collide'); mediaPaths.add(path);
     const file=manifest.files.find(item=>item.path===path && item.kind==='media-original');
     if(!file || file.sha256!==media.sha256 || file.bytes!==media.byte_size) fail(`Original media entry is missing for ${String(media.id)}`);

@@ -75,6 +75,7 @@ class ArchiveMediaModule : Module() {
   private fun format(file: File): String {
     require(file.length() in 1..maxBytes) { "SIZE_LIMIT" }
     RandomAccessFile(file, "r").use { r ->
+      require(r.length() >= 8) { "CORRUPT_IMAGE" }
       val header = ByteArray(8); r.readFully(header)
       if (header[0] == 0xff.toByte() && header[1] == 0xd8.toByte() && header[2] == 0xff.toByte()) {
         r.seek(r.length()-2); require(r.readUnsignedShort()==0xffd9) { "CORRUPT_IMAGE" }; return "jpg"
@@ -90,6 +91,37 @@ class ArchiveMediaModule : Module() {
           if (type == "IEND") { end = true; break }
         }
         require(end) { "CORRUPT_IMAGE" }; return "png"
+      }
+      if (String(header, 4, 4, Charsets.US_ASCII) == "ftyp") {
+        // Bound every ISO-BMFF box before reading; MIME/filename are not evidence.
+        r.seek(0)
+        val brands = mutableSetOf<String>(); var meta = false; var data = false
+        while (r.filePointer < r.length()) {
+          val start = r.filePointer
+          require(r.length() - start >= 8) { "CORRUPT_IMAGE" }
+          var size = r.readInt().toLong() and 0xffffffffL
+          val typeBytes = ByteArray(4); r.readFully(typeBytes)
+          val type = String(typeBytes, Charsets.US_ASCII)
+          if (size == 1L) { require(r.length() - r.filePointer >= 8) { "CORRUPT_IMAGE" }; size = r.readLong() }
+          if (size == 0L) size = r.length() - start
+          val headerSize = r.filePointer - start
+          require(size >= headerSize && size <= r.length() - start) { "CORRUPT_IMAGE" }
+          if (type == "ftyp") {
+            require(start == 0L && size - headerSize in 8..4096 && (size - headerSize) % 4 == 0L) { "CORRUPT_IMAGE" }
+            val brand = ByteArray(4); r.readFully(brand); brands.add(String(brand, Charsets.US_ASCII))
+            r.skipBytes(4) // minor version is not a compatible brand
+            while (r.filePointer < start + size) { r.readFully(brand); brands.add(String(brand, Charsets.US_ASCII)) }
+          }
+          if (type == "meta") meta = true
+          if (type == "mdat") data = true
+          r.seek(start + size)
+        }
+        require(brands.none { it in setOf("avis", "msf1", "hevc", "hevx") }) { "UNSUPPORTED_ANIMATION" }
+        require("avif" !in brands) { "UNSUPPORTED_FORMAT" }
+        val hevc = brands.any { it in setOf("heic", "heix") }
+        require(hevc || "mif1" in brands) { "UNSUPPORTED_FORMAT" }
+        require(meta && data) { "CORRUPT_IMAGE" }
+        return if (hevc) "heic" else "heif"
       }
       error("UNSUPPORTED_FORMAT")
     }
@@ -140,6 +172,17 @@ class ArchiveMediaModule : Module() {
   }
   override fun definition() = ModuleDefinition {
     Name("ArchiveMedia")
+    AsyncFunction("sourceFilename") { source: String ->
+      val uri=Uri.parse(source)
+      if (uri.scheme == "file") File(requireNotNull(uri.path)).name
+      else {
+        require(uri.scheme == "content") { "SOURCE_UNAVAILABLE" }
+        requireNotNull(appContext.reactContext).contentResolver.query(uri,
+          arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),null,null,null)?.use { cursor ->
+          if (cursor.moveToFirst() && !cursor.isNull(0)) cursor.getString(0) else null
+        }
+      }
+    }
     AsyncFunction("copyToStaging") { source: String, destination: String ->
       val dest = owned(destination); require(dest.path.contains("/staging/") && dest.name.endsWith(".part")) { "INVALID_PATH" }
       dest.parentFile!!.mkdirs()
@@ -155,9 +198,12 @@ class ArchiveMediaModule : Module() {
     }
     AsyncFunction("inspect") { uri: String ->
       val file=owned(uri); val ext=format(file); val dimensions=IntArray(2)
-      decode(file, 64, dimensions).recycle()
+      val heif = ext == "heic" || ext == "heif"
+      if (heif && Build.VERSION.SDK_INT >= 28 && !ImageDecoder.isMimeTypeSupported("image/heif")) error("UNSUPPORTED_HEIC_DECODER")
+      try { decode(file, 64, dimensions).recycle() }
+      catch (e: java.io.IOException) { throw IllegalArgumentException(if (heif) "HEIC_DECODE_FAILED" else "CORRUPT_IMAGE", e) }
       JSONObject().put("sha256",hash(file)).put("byteSize",file.length())
-        .put("mimeType",if(ext=="jpg") "image/jpeg" else "image/png").put("extension",ext)
+        .put("mimeType",when(ext) { "jpg" -> "image/jpeg"; "png" -> "image/png"; "heic" -> "image/heic"; else -> "image/heif" }).put("extension",ext)
         .put("width",dimensions[0]).put("height",dimensions[1]).put("sourceMetadata",metadata(file)).put("parserVersion",1).toString()
     }
     AsyncFunction("verify") { uri: String, expected: String, size: Double ->

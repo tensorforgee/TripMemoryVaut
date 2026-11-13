@@ -246,7 +246,7 @@ test('schema 10 upgrades through current schema without changing original Stops/
   const before=await routes.listStops(trip.id),history=await f.connection.getAllAsync('SELECT * FROM schema_migrations ORDER BY version');
   await migrateDatabase(f.database,f.services);assert.deepEqual(await routes.listStops(trip.id),before);
   assert.deepEqual((await f.connection.getAllAsync('SELECT * FROM schema_migrations ORDER BY version')).slice(0,10),history);
-  assert.equal((await f.connection.getFirstAsync('PRAGMA user_version')).user_version,13);
+  assert.equal((await f.connection.getFirstAsync('PRAGMA user_version')).user_version,14);
   assert.equal((await f.connection.getFirstAsync('SELECT count(*) n FROM road_route_segments')).n,0);
   await migrateDatabase(f.database,f.services);assert.deepEqual(await routes.listStops(trip.id),before);
 });

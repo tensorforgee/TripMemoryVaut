@@ -4,12 +4,18 @@ import { uuid } from '../../domain/validation';
 import type { MediaFiles } from './files';
 
 type NativeArchive = {
+  sourceFilename(source: string): Promise<string | null>;
   copyToStaging(source: string, target: string): Promise<void>;
   inspect(uri: string): Promise<string>;
   verify(uri: string, hash: string, bytes: number): Promise<boolean>;
   publish(source: string, target: string, hash: string, bytes: number): Promise<void>;
   derive(source: string, target: string, edge: number): Promise<string>;
 };
+export async function selectedFileName(uri: string): Promise<string | null> {
+  const native=requireOptionalNativeModule<NativeArchive>('ArchiveMedia');
+  if(!native) throw new Error('NATIVE_MEDIA_UNAVAILABLE: rebuild the Android development client.');
+  return native.sourceFilename(uri);
+}
 export function nativeMediaFiles(vaultId: string): MediaFiles {
   uuid(vaultId, 'vaultId');
   const root = new Directory(Paths.document, 'vaults', vaultId);

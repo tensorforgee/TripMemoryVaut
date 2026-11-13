@@ -4,7 +4,7 @@ import { MediaRepository, type ImportItem } from '../../features/media/repositor
 
 export function importError(error: unknown): string {
   const s=String(error);
-  for(const code of ['UNSUPPORTED_FORMAT','UNSUPPORTED_ANIMATION','SIZE_LIMIT','PIXEL_LIMIT','CORRUPT_IMAGE','ORIGINAL_CONFLICT','STAGING_INVALID','NATIVE_MEDIA_UNAVAILABLE','ANDROID_9_REQUIRED']) if(s.includes(code)) return code;
+  for(const code of ['UNSUPPORTED_HEIC_DECODER','HEIC_DECODE_FAILED','UNSUPPORTED_FORMAT','UNSUPPORTED_ANIMATION','SIZE_LIMIT','PIXEL_LIMIT','CORRUPT_IMAGE','ORIGINAL_CONFLICT','STAGING_INVALID','NATIVE_MEDIA_UNAVAILABLE','ANDROID_9_REQUIRED']) if(s.includes(code)) return code;
   if (/space|ENOSPC/i.test(s)) return 'STORAGE_FULL';
   if (/SOURCE_UNAVAILABLE|ENOENT|No such file|Permission|FileNotFound/i.test(s)) return 'SOURCE_UNAVAILABLE';
   return 'IMPORT_FAILED';

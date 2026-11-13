@@ -39,7 +39,7 @@ const stamp='2026-09-30T08:30:00.000Z';
 const unknown={start:{precision:'unknown'},end:null,certainty:'unknown',source:'user'};
 const approximate={start:{precision:'year',value:'2009'},end:null,certainty:'approximate',source:'user',label:'College year'};
 
-async function seed(f,mediaFiles){
+async function seed(f,mediaFiles,extension="jpg"){
   const c=f.connection,v=f.vault.id;
   const ids=Object.fromEntries(['trip','trashedTrip','place','unmapped','day','stop','trashStop','media','placement','companion','membership','chapter','chapterLink','dream','dreamPlace','dreamVisit','run','suggestion'].map(key=>[key,randomUUID()]));
   await c.runAsync(`INSERT INTO trips(id,vault_id,title,status,dates_json,sort_date,sort_precision,created_at,updated_at) VALUES(?,?,?,'saved',?,'2009-01-01','year',?,?)`,ids.trip,v,'College trip',JSON.stringify(approximate),stamp,stamp);
@@ -49,8 +49,8 @@ async function seed(f,mediaFiles){
   await c.runAsync(`INSERT INTO trip_days(id,vault_id,trip_id,position,label,dates_json,created_at,updated_at) VALUES(?,?,?,0,'Arrival',?,?,?)`,ids.day,v,ids.trip,JSON.stringify(approximate),stamp,stamp);
   await c.runAsync(`INSERT INTO stops(id,vault_id,trip_id,place_id,day_id,position,kind,visit_confirmed,detail_certainty,source,dates_json,note,created_at,updated_at) VALUES(?,?,?,?,?,0,'stay',1,'approximate','user',?,'First visit',?,?)`,ids.stop,v,ids.trip,ids.place,ids.day,JSON.stringify(approximate),stamp,stamp);
   await c.runAsync(`INSERT INTO stops(id,vault_id,trip_id,place_id,position,kind,visit_confirmed,detail_certainty,source,created_at,updated_at) VALUES(?,?,?,?,0,'visit',1,'unknown','user',?,?)`,ids.trashStop,v,ids.trashedTrip,ids.place,stamp,stamp);
-  const bytes=Buffer.from('original-photo-bytes\n');const hash=createHash('sha256').update(bytes).digest('hex');const relative=mediaPath(hash,'jpg');await mkdir(dirname(mediaFiles.uri(relative)),{recursive:true});await writeFile(mediaFiles.uri(relative),bytes);
-  await c.runAsync(`INSERT INTO media(id,vault_id,sha256,byte_size,mime_type,extension,width,height,original_filename,source_fidelity,source_metadata_json,parser_version,created_at,updated_at) VALUES(?,?,?,?,'image/jpeg','jpg',10,10,'memory.jpg','original_confirmed','{}',1,?,?)`,ids.media,v,hash,bytes.length,stamp,stamp);
+  const bytes=Buffer.from('original-photo-bytes\n');const hash=createHash('sha256').update(bytes).digest('hex');const relative=mediaPath(hash,extension);await mkdir(dirname(mediaFiles.uri(relative)),{recursive:true});await writeFile(mediaFiles.uri(relative),bytes);
+  await c.runAsync(`INSERT INTO media(id,vault_id,sha256,byte_size,mime_type,extension,width,height,original_filename,source_fidelity,source_metadata_json,parser_version,created_at,updated_at) VALUES(?,?,?,?,?,?,10,10,'memory.jpg','original_confirmed','{}',1,?,?)`,ids.media,v,hash,bytes.length,extension==='jpg'?'image/jpeg':`image/${extension}`,extension,stamp,stamp);
   await c.runAsync(`INSERT INTO local_media_files(media_id,vault_id,variant,relative_path,state,bytes,pinned,last_access_at,checksum,width,height) VALUES(?,?,'original',?,'available',?,1,?,?,10,10)`,ids.media,v,relative,bytes.length,stamp,hash);
   await c.runAsync(`INSERT INTO trip_media(id,vault_id,trip_id,media_id,day_id,stop_id,position,caption,is_favourite,created_at,updated_at) VALUES(?,?,?,?,?,?,0,'At the ridge',1,?,?)`,ids.placement,v,ids.trip,ids.media,ids.day,ids.stop,stamp,stamp);
   await c.runAsync(`INSERT INTO companions(id,vault_id,label,note,created_at,updated_at) VALUES(?,?,?,'College friend',?,?)`,ids.companion,v,'Aman',stamp,stamp);
@@ -226,7 +226,7 @@ test('legacy format v1 restores through the current schema and survives FTS clos
   try {
     assert.equal((await connection.getFirstAsync('SELECT id FROM vaults')).id,x.f.vault.id);
     assert.equal((await connection.getFirstAsync('SELECT count(*) n FROM road_route_segments')).n,0);
-    assert.equal((await connection.getFirstAsync('PRAGMA user_version')).user_version,13);
+    assert.equal((await connection.getFirstAsync('PRAGMA user_version')).user_version,14);
     assert.equal((await connection.getFirstAsync('PRAGMA integrity_check')).integrity_check,'ok');
     assert.deepEqual(await connection.getAllAsync('PRAGMA foreign_key_check'),[]);
     assert.deepEqual(await readFile(files.uri(x.ids.relative)),x.ids.bytes);
@@ -326,4 +326,25 @@ test('v4 memory validation rejects invalid dates, cross-trip context, dangling p
   await rewriteData(x.io,root,'data/memories.json',d=>d.records=[memory]);await rewriteData(x.io,root,'data/memory-media.json',d=>d.records=[{id:randomUUID(),vault_id:x.f.vault.id,memory_id:memory.id,media_id:randomUUID(),created_at:stamp,updated_at:stamp,deleted_at:null}]);
   await rewriteManifest(x.io,root,m=>{m.counts.memories=1;m.counts.memory_media=1;});await assert.rejects(inspectPortableRestore(x.io,root),/Broken reference/);
   await rewriteManifest(x.io,x.published,m=>{m.format_version=3;m.schema_version=12;});await assert.rejects(inspectPortableRestore(x.io,x.published),/require portable format v4/);
+});
+
+test('v4 HEIC and HEIF originals survive export/restore byte-identically without a format migration',async t=>{
+  for(const ext of ['heic','heif']) {
+    const f=await fixture(t),io=new NodeIO(),files=new MediaFiles(join(dirname(f.path),'heic-source')),ids=await seed(f,files,ext);
+    const root=join(dirname(f.path),'heic-export');const exported=await createPortableExport({database:f.database,vaultId:f.vault.id,io,mediaFiles:files,stagingRoot:root});
+    assert.equal(exported.manifest.format_version,4);assert.equal(exported.manifest.schema_version,14);
+    const inspected=await inspectPortableRestore(io,root);assert.equal(inspected.manifest.media_count,1);
+    const fresh=await fixture(t),restored=new MediaFiles(join(dirname(fresh.path),'heic-restored'));
+    await restorePortableArchive({database:fresh.database,currentVaultId:fresh.vault.id,io,archiveRoot:root,destinationMedia:restored,newStagingId:randomUUID});
+    assert.deepEqual(await readFile(restored.uri(ids.relative)),ids.bytes);
+    assert.ok(await restored.verify(ids.relative,ids.hash,ids.bytes.length));
+    assert.equal((await fresh.connection.getFirstAsync('SELECT extension FROM media')).extension,ext);
+  }
+});
+
+test('pre-HEIC v4 schema 13 archives still restore',async t=>{
+  const x=await exported(t);await rewriteManifest(x.io,x.published,m=>m.schema_version=13);
+  const fresh=await fixture(t),files=new MediaFiles(join(dirname(fresh.path),'v4-schema13'));
+  await restorePortableArchive({database:fresh.database,currentVaultId:fresh.vault.id,io:x.io,archiveRoot:x.published,destinationMedia:files,newStagingId:randomUUID});
+  assert.deepEqual(await readFile(files.uri(x.ids.relative)),x.ids.bytes);
 });
