@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { router, useLocalSearchParams, useNavigation } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, Switch, Text, TextInput, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import type { Trip } from '../../domain/trip';
 import type { PartialDate } from '../../domain/date-spec';
 import { openVaultDatabase } from '../../core/database/open';
@@ -123,7 +124,7 @@ export default function TripEditorScreen() {
         autoCapitalize="none" onChangeText={value => change(which, value)} />}
     </View>;
   }
-  return <KeyboardAvoidingView style={styles.page} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+  return <SafeAreaView style={styles.page} edges={['bottom', 'left', 'right']}><KeyboardAvoidingView style={styles.page} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
       <Text style={styles.heading}>{tripId ? 'Edit trip' : 'Create trip'}</Text>
       {error ? <Problem error={error} /> : null}
@@ -147,5 +148,5 @@ export default function TripEditorScreen() {
         <Action title="Save as draft" disabled={busy} onPress={() => { void finish('draft'); }} />
       </>}
     </ScrollView>
-  </KeyboardAvoidingView>;
+  </KeyboardAvoidingView></SafeAreaView>;
 }

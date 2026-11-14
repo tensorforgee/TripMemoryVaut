@@ -1353,3 +1353,17 @@ normalization, name/pair uniqueness, ownership, references, timestamps and versi
 smuggling. Restore keeps stable IDs/tombstones and rebuilds FTS. V1–v4 archives
 restore with empty tag tables. Earlier readers must reject v5. HEIC originals,
 map geometry, source metadata and ORS provenance are unchanged.
+
+## 31. Navigation foundation — 14 November 2026
+
+The four-tab shell in section 12 is implemented using the existing Trips, global
+Map, Dreams and My Travel Life screens. Their public paths remain `/`, `/map`,
+`/dreams` and `/life`; Expo Router's `(tabs)` group is not part of the URL.
+Trip Details and all nested editors remain root-stack routes above the shell.
+Written Travel Memories remain reachable through Trip Details and Search.
+Settings is in the My Life header, with Routing, Trash and export/restore links.
+Search remains accessible from Trips. No new information hierarchy or schema is
+introduced. Tab Back follows visit history; cold deep links have the shell as a
+back destination. The existing React-rendered header workaround is retained.
+See `navigation-foundation.md` for the route audit, scoped UI changes, verification
+and remaining screen-specific design work.

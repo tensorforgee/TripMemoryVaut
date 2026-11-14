@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { VaultDatabase } from '../../core/database/open';
-import { Action, Problem, styles } from '../trips/ui';
+import { Action, LoadingState, Problem, styles } from '../trips/ui';
 import { useOrganizationQuery } from '../organization/useOrganizationQuery';
 import type { TravelLifeOverview } from './repository';
 
@@ -21,7 +21,7 @@ function Metric({ label, value, note, onPress }: { label: string; value: string;
 
 function SectionHeader({ title, action, onPress }: { title: string; action: string; onPress: () => void }) {
   return <View style={styles.row}><Text style={styles.section}>{title}</Text>
-    <Pressable accessibilityRole="button" onPress={onPress} style={local.textAction}><Text style={local.link}>{action}</Text></Pressable></View>;
+    <Pressable accessibilityRole="button" accessibilityLabel={`${action} ${title}`} onPress={onPress} style={local.textAction}><Text style={local.link}>{action}</Text></Pressable></View>;
 }
 
 function Overview({ value }: { value: TravelLifeOverview }) {
@@ -32,7 +32,7 @@ function Overview({ value }: { value: TravelLifeOverview }) {
       <Metric label="Places" value={String(metrics.places)} onPress={() => router.push('/life/places')} />
       <Metric label="Visits" value={String(metrics.visits)} onPress={() => router.push('/life/places')} />
       <Metric label="Photos" value={String(metrics.photos)} note="unique archived media" />
-      <Metric label="Recorded distance" value="Unavailable" note="not stored in canonical Trip data" />
+      <Metric label="Recorded distance" value="Unavailable" note="No recorded distance in this archive" />
     </View>
 
     <SectionHeader title="Life Chapters" action="View all" onPress={() => router.push('/chapters')} />
@@ -60,14 +60,12 @@ function Overview({ value }: { value: TravelLifeOverview }) {
 export default function TravelLifeScreen() {
   const query = useCallback((vault: VaultDatabase) => vault.life.overview(), []);
   const result = useOrganizationQuery(query);
-  return <SafeAreaView style={styles.page} edges={['bottom', 'left', 'right']}>
+  return <SafeAreaView style={styles.page} edges={['left', 'right']}>
     <ScrollView contentContainerStyle={styles.content}>
       <Text style={styles.heading}>Travel Life</Text>
-      <Text style={styles.text}>A view of your confirmed archive so far. Saved Trips and confirmed visits only; drafts and Trash stay out.</Text>
-      {result.error ? <Problem error={result.error} retry={result.retry} /> : result.data ? <Overview value={result.data} /> : <Text>Reading your local archive…</Text>}
-      <Action title="Open My Map" onPress={() => router.push('/map')} />
-      <Action title="Browse Places" onPress={() => router.push('/life/places')} />
-      <Action title="Settings" onPress={() => router.push('/settings')} />
+      <Text style={styles.text}>Your saved trips, confirmed visits and the people who shared them.</Text>
+      {result.error ? <Problem error={result.error} retry={result.retry} /> : result.data ? <Overview value={result.data} /> : <LoadingState label="Reading your local archive…" />}
+      <Action title="Browse Places" secondary onPress={() => router.push('/life/places')} />
     </ScrollView>
   </SafeAreaView>;
 }

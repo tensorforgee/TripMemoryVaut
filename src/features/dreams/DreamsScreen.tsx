@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { openVaultDatabase, type VaultDatabase } from '../../core/database/open';
 import type { DreamWithVisits } from './repository';
 import { useOrganizationQuery } from '../organization/useOrganizationQuery';
-import { Action, Problem, message, styles } from '../trips/ui';
+import { Action, EmptyState, LoadingState, Problem, message, styles } from '../trips/ui';
 
 function coordinate(text: string): number | null {
   return text.trim() === '' ? null : Number(text.trim());
@@ -44,8 +44,8 @@ export default function DreamsScreen() {
     { title: 'Visited', data: active.filter(dream => dream.status === 'visited') },
     { title: 'Archived', data: result.data?.archived ?? [] },
   ];
-  return <SafeAreaView style={styles.page} edges={['bottom', 'left', 'right']}>
-    <SectionList keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content} sections={sections} keyExtractor={dream => dream.id}
+  return <SafeAreaView style={styles.page} edges={['left', 'right']}>
+    <SectionList keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={styles.content} sections={sections} keyExtractor={dream => dream.id}
       ListHeaderComponent={<View style={{ gap: 10 }}>
         <Text style={styles.heading}>Dream Places</Text>
         <Text style={styles.text}>A private list of places you hope to visit. Dreams are wishes, not travel plans.</Text>
@@ -60,9 +60,10 @@ export default function DreamsScreen() {
         <Action title={busy ? 'Saving…' : 'Add Dream'} disabled={busy} onPress={() => { void create(); }} />
         {result.error ? <Problem error={result.error} retry={result.retry} /> : error ? <Problem error={error} /> : null}
       </View>}
-      renderSectionHeader={({ section }) => <Text style={styles.section}>{section.title}</Text>}
+      renderSectionHeader={({ section }) => section.data.length ? <Text style={styles.section}>{section.title}</Text> : null}
       renderItem={({ item, section }) => <DreamCard dream={item} busy={busy} restore={section.title === 'Archived'
         ? () => { void run(() => openVaultDatabase().then(vault => vault.dreams.unarchive(item.id))); } : undefined} />}
-      ListFooterComponent={!result.data ? <Text>Reading Dreams from this device…</Text> : null} />
+      ListFooterComponent={result.error ? null : !result.data ? <LoadingState label="Reading Dreams from this device…" />
+        : !sections.some(section => section.data.length) ? <EmptyState title="Where do you dream of going?" detail="Add a place above. A name is enough; coordinates and notes are optional." /> : null} />
   </SafeAreaView>;
 }

@@ -6,7 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { VaultDatabase } from '../../core/database/open';
 import { offlineStyle } from '../../core/maps/offline-style';
 import { useOrganizationQuery } from '../organization/useOrganizationQuery';
-import { Action, Problem, styles } from '../trips/ui';
+import { Action, LoadingState, Problem, styles } from '../trips/ui';
 import { fitTripCamera } from './model';
 import type { GlobalMapArchive, GlobalMapPlace } from './repository';
 
@@ -24,7 +24,7 @@ function ArchiveMap({ archive, selectedId, select }: {
   const [width, setWidth] = useState(320);
   const camera = useMemo(() => fitTripCamera(archive.mappedPlaces.flatMap(place => place.coordinate ? [place.coordinate] : []), width, 320), [archive, width]);
   if (!camera) return <View style={local.emptyMap}><Text style={styles.section}>No mapped places yet</Text>
-    <Text style={styles.text}>Confirmed visited Places will appear when their canonical Place has coordinates.</Text></View>;
+    <Text style={styles.text}>Save a trip with a confirmed visit or stay to begin your personal map. Places without coordinates remain in the list below.</Text></View>;
   if (failed) return <Text>Map unavailable. Your visited Places and visit history remain available below.</Text>;
   return <View onLayout={event => setWidth(event.nativeEvent.layout.width)}>
     <Map style={{ height: 320 }} mapStyle={offlineStyle} onDidFailLoadingMap={() => setFailed(true)}
@@ -73,19 +73,17 @@ export default function GlobalMapScreen() {
     ...(result.data.mappedPlaces.length ? [{ title: 'Mapped Places', data: result.data.mappedPlaces }] : []),
     ...(result.data.unmappedPlaces.length ? [{ title: 'Places without coordinates', data: result.data.unmappedPlaces }] : []),
   ] : [];
-  return <SafeAreaView style={styles.page} edges={['bottom', 'left', 'right']}>
+  return <SafeAreaView style={styles.page} edges={['left', 'right']}>
     <SectionList sections={sections} keyExtractor={place => place.id} contentContainerStyle={styles.content}
       ListHeaderComponent={<View style={{ gap: 12 }}>
         <Text style={styles.heading}>My Map</Text>
-        <Text style={styles.text}>Your confirmed visited geography across active saved Trips. Dreams, drafts, transit Stops and Trash are not plotted.</Text>
-        {result.error ? <Problem error={result.error} retry={result.retry} /> : !result.data ? <Text>Reading your local archive…</Text> : <>
+        <Text style={styles.text}>Revisit the places from your saved trips. Only confirmed visits and stays appear here.</Text>
+        {result.error ? <Problem error={result.error} retry={result.retry} /> : !result.data ? <LoadingState label="Reading your local archive…" /> : <>
           <Text style={local.summary}>{plural(result.data.mappedPlaceCount, 'mapped place')} · {plural(result.data.unmappedPlaceCount, 'place')} without coordinates</Text>
           {result.data.unmappedPlaceCount > 0 ? <Text style={styles.text}>{plural(result.data.unmappedPlaceCount, 'visited place')} {result.data.unmappedPlaceCount === 1 ? 'is' : 'are'} not shown because {result.data.unmappedPlaceCount === 1 ? 'its location is' : 'their locations are'} unknown.</Text> : null}
           <Text style={styles.text}>Offline overview · Natural Earth. Markers and archive details are local; no detailed road tiles.</Text>
           <GlobalMapBoundary><ArchiveMap archive={result.data} selectedId={selectedId} select={setSelectedId} /></GlobalMapBoundary>
           {selected ? <PlaceDetails place={selected} /> : result.data.mappedPlaceCount > 0 ? <Text style={styles.text}>Select a marker or Place below to view its confirmed visits.</Text> : null}
-          {result.data.totalPlaceCount === 0 ? <View style={styles.card}><Text style={styles.section}>No mapped places yet</Text>
-            <Text style={styles.text}>Save a Trip with a confirmed visit or stay to begin your personal map. Places without coordinates will remain visible here.</Text></View> : null}
         </>}
       </View>}
       renderSectionHeader={({ section }) => <Text style={styles.section}>{section.title}</Text>}

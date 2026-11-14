@@ -1,11 +1,18 @@
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
+import { StatusBar } from 'expo-status-bar';
+import { NavigationHeader } from '../src/shared/ui/NavigationHeader';
+import { LoadingState, styles } from '../src/features/trips/ui';
+import { theme } from '../src/shared/ui/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { openVaultDatabase } from '../src/core/database/open';
 import { MigrationError } from '../src/core/database/migrate';
 import { mediaService } from '../src/features/media/service';
 import { completePendingVaultReset, recoverPendingVaultReset } from '../src/features/settings/native-reset';
+
+// Seed a home destination behind cold deep links so Android Back stays in the vault.
+export const unstable_settings = { initialRouteName: '(tabs)' };
 
 export default function RootLayout() {
   const [ready, setReady] = useState(false);
@@ -21,60 +28,46 @@ export default function RootLayout() {
     return () => { active = false; };
   }, []);
   if (!ready) {
-    return <View style={{ padding: 32 }}><Text accessibilityLiveRegion="polite">
-      {error ? `Database initialization failed.\n${error.message}${error instanceof MigrationError && error.backupPath ? `\nRecovery snapshot: ${error.backupPath}` : ''}` : 'Opening local vault…'}
-    </Text></View>;
+    return <SafeAreaView style={styles.page}><View style={styles.content}>
+      <Text accessibilityRole="header" style={styles.heading}>Trip Memory Vault</Text>
+      {error ? <Text accessibilityRole="alert" style={styles.error}>
+        {`Database initialization failed.\n${error.message}${error instanceof MigrationError && error.backupPath ? `\nRecovery snapshot: ${error.backupPath}` : ''}`}
+      </Text> : <LoadingState label="Opening local vault…" />}
+    </View></SafeAreaView>;
   }
   return (
-    <Stack>
-      <Stack.Screen name="index" options={{ title: 'Trips', header: tripHeader }} />
-      <Stack.Screen name="trips/new" options={{ title: 'Create trip', header: tripHeader }} />
-      <Stack.Screen name="trips/trash" options={{ title: 'Trash', header: tripHeader }} />
-      <Stack.Screen name="trips/[tripId]/index" options={{ title: 'Trip', header: tripHeader }} />
-      <Stack.Screen name="trips/[tripId]/edit" options={{ title: 'Edit trip', header: tripHeader }} />
-      <Stack.Screen name="trips/[tripId]/route" options={{ title: 'Route / Stops', header: tripHeader }} />
+    <><StatusBar style="dark" /><Stack screenOptions={{ header: NavigationHeader, contentStyle: { backgroundColor: theme.colors.background } }}>
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="trips/new" options={{ title: 'Create trip' }} />
+      <Stack.Screen name="trips/trash" options={{ title: 'Trash' }} />
+      <Stack.Screen name="trips/[tripId]/index" options={{ title: 'Trip' }} />
+      <Stack.Screen name="trips/[tripId]/edit" options={{ title: 'Edit trip' }} />
+      <Stack.Screen name="trips/[tripId]/route" options={{ title: 'Route / Stops' }} />
       <Stack.Screen name="trips/[tripId]/map" options={{ title: 'Trip Map', headerShown: false }} />
-      <Stack.Screen name="trips/[tripId]/memories" options={{ title: 'Memories', header: tripHeader }} />
-      <Stack.Screen name="trips/[tripId]/timeline" options={{ title: 'Timeline', header: tripHeader }} />
-      <Stack.Screen name="trips/[tripId]/photos" options={{ title: 'Photos', header: tripHeader }} />
-      <Stack.Screen name="trips/[tripId]/reconstruct" options={{ title: 'Reconstruction', header: tripHeader }} />
-      <Stack.Screen name="companions/index" options={{ title: 'Companions', header: tripHeader }} />
-      <Stack.Screen name="companions/[companionId]" options={{ title: 'Companion', header: tripHeader }} />
-      <Stack.Screen name="chapters/index" options={{ title: 'Life Chapters', header: tripHeader }} />
-      <Stack.Screen name="chapters/[chapterId]" options={{ title: 'Life Chapter', header: tripHeader }} />
-      <Stack.Screen name="life/index" options={{ title: 'My Travel Life', header: tripHeader }} />
-      <Stack.Screen name="life/places" options={{ title: 'Places visited', header: tripHeader }} />
-      <Stack.Screen name="map" options={{ title: 'My Map', header: tripHeader }} />
-      <Stack.Screen name="dreams/index" options={{ title: 'Dream Places', header: tripHeader }} />
-      <Stack.Screen name="dreams/[dreamId]" options={{ title: 'Dream', header: tripHeader }} />
-      <Stack.Screen name="archive" options={{ title: 'Archive & restore', header: tripHeader }} />
-      <Stack.Screen name="settings/index" options={{ title: 'Settings', header: tripHeader }} />
-      <Stack.Screen name="settings/routing" options={{ title: 'Routing', header: tripHeader }} />
-      <Stack.Screen name="search" options={{ title: 'Search', header: tripHeader }} />
+      <Stack.Screen name="trips/[tripId]/memories" options={{ title: 'Memories' }} />
+      <Stack.Screen name="trips/[tripId]/timeline" options={{ title: 'Timeline' }} />
+      <Stack.Screen name="trips/[tripId]/photos" options={{ title: 'Photos' }} />
+      <Stack.Screen name="trips/[tripId]/reconstruct" options={{ title: 'Reconstruction' }} />
+      <Stack.Screen name="companions/index" options={{ title: 'Companions' }} />
+      <Stack.Screen name="companions/[companionId]" options={{ title: 'Companion' }} />
+      <Stack.Screen name="chapters/index" options={{ title: 'Life Chapters' }} />
+      <Stack.Screen name="chapters/[chapterId]" options={{ title: 'Life Chapter' }} />
+      <Stack.Screen name="life/places" options={{ title: 'Places visited' }} />
+      <Stack.Screen name="dreams/[dreamId]" options={{ title: 'Dream' }} />
+      <Stack.Screen name="archive" options={{ title: 'Archive & restore' }} />
+      <Stack.Screen name="settings/index" options={{ title: 'Settings' }} />
+      <Stack.Screen name="settings/routing" options={{ title: 'Routing' }} />
+      <Stack.Screen name="search" options={{ title: 'Search' }} />
       <Stack.Protected guard={__DEV__}>
-      <Stack.Screen name="database-test" options={{ title: 'Database verification', header: tripHeader }} />
-      <Stack.Screen name="reconstruction-test" options={{ title: 'Reconstruction verification', header: tripHeader }} />
-      <Stack.Screen name="media-test" options={{ title: 'Media verification', header: tripHeader }} />
+      <Stack.Screen name="database-test" options={{ title: 'Database verification' }} />
+      <Stack.Screen name="reconstruction-test" options={{ title: 'Reconstruction verification' }} />
+      <Stack.Screen name="media-test" options={{ title: 'Media verification' }} />
       <Stack.Screen name="map-test" options={{ title: 'MapLibre compatibility' }} />
-      <Stack.Screen name="trip-map-test" options={{ title: 'Trip Map verification', header: tripHeader }} />
-      <Stack.Screen name="my-map-test" options={{ title: 'My Map verification', header: tripHeader }} />
-      <Stack.Screen name="archive-test" options={{ title: 'Archive verification', header: tripHeader }} />
-      <Stack.Screen name="search-test" options={{ title: 'Search verification', header: tripHeader }} />
+      <Stack.Screen name="trip-map-test" options={{ title: 'Trip Map verification' }} />
+      <Stack.Screen name="my-map-test" options={{ title: 'My Map verification' }} />
+      <Stack.Screen name="archive-test" options={{ title: 'Archive verification' }} />
+      <Stack.Screen name="search-test" options={{ title: 'Search verification' }} />
       </Stack.Protected>
-    </Stack>
+    </Stack></>
   );
-}
-
-// React-rendered header avoids Screens 4.26.2's Android/Fabric native-header
-// update crash when an editor with removal protection leaves the stack.
-function tripHeader({ options, back, navigation }: {
-  options: { title?: string }; back?: unknown; navigation: { goBack(): void };
-}) {
-  return <SafeAreaView edges={['top', 'left', 'right']} style={{ backgroundColor: '#fff' }}>
-    <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 56, gap: 16 }}>
-      {back ? <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => navigation.goBack()}
-        style={{ minHeight: 48, justifyContent: 'center', paddingHorizontal: 8 }}><Text style={{ fontSize: 18, color: '#183e63' }}>‹ Back</Text></Pressable> : null}
-      <Text style={{ fontSize: 20, fontWeight: '600', color: '#17283b' }}>{options.title}</Text>
-    </View>
-  </SafeAreaView>;
 }
