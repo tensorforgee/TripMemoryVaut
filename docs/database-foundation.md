@@ -56,3 +56,13 @@ checks native backup/recovery, migration idempotence/checksums, UUID creation,
 CRUD, unknown/approximate dates, and persistence across connection reopen.
 Fixture databases and snapshots are deliberately retained on the development
 device for inspection. The verification screen is unavailable in release mode.
+
+
+## Tags extension (migration 15)
+
+`tags` has active normalized-name uniqueness. `trip_tags` and `memory_tags` have
+same-vault composite FKs and stable, reusable membership IDs with tombstones.
+Triggers guard live attachment targets and immutable ownership. Deleting a tag
+only detaches memberships; parent Trip trash hides them without mutation.
+FTS index version 3 adds tag names. Migration snapshots, serialized transactions,
+foreign-key checks and the original migration ledger remain unchanged.

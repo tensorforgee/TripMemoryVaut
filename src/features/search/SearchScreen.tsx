@@ -1,3 +1,4 @@
+import TagSection from '../tags/TagSection';
 import { useCallback, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { FlatList, Pressable, Text, TextInput, View } from 'react-native';
@@ -13,22 +14,24 @@ const labels: Record<SearchResult['entityType'], string> = {
 
 export default function SearchScreen() {
   const [query, setQuery] = useState('');
+  const [tagIds,setTagIds]=useState<string[]>([]);
+  const [revision,setRevision]=useState(0);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   useFocusEffect(useCallback(() => {
     let active = true;
     const trimmed = query.trim();
-    if (!trimmed) { setResults([]); setLoading(false); setError(''); return () => { active = false; }; }
+    if (!trimmed && !tagIds.length) { setResults([]); setLoading(false); setError(''); return () => { active = false; }; }
     setLoading(true);
     const timer = setTimeout(() => {
-      openVaultDatabase().then(vault => vault.search.search(trimmed)).then(value => {
+      openVaultDatabase().then(vault => vault.search.search(trimmed,30,tagIds)).then(value => {
         if (active) { setResults(value); setError(''); setLoading(false); }
       }).catch(failure => { if (active) { setError(message(failure)); setLoading(false); } });
     }, 120);
     return () => { active = false; clearTimeout(timer); };
-  }, [query]));
-  const empty = query.trim() ? (loading ? 'Searching this device…' : 'No matching memories.')
+  }, [query,tagIds,revision]));
+  const empty = query.trim() || tagIds.length ? (loading ? 'Searching this device…' : 'No matching memories.')
     : 'Search trips, places, people, chapters and dreams';
   return <SafeAreaView style={styles.page} edges={['bottom', 'left', 'right']}>
     <FlatList keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content} data={results}
@@ -39,6 +42,7 @@ export default function SearchScreen() {
           placeholder="Trips, places, people, notes…" returnKeyType="search" style={styles.input}
           value={query} onChangeText={setQuery} />
         <Text style={styles.text}>Private, offline search of confirmed archive content.</Text>
+        <TagSection selected={tagIds} onChange={setTagIds} onUpdated={()=>setRevision(n=>n+1)}/>
         {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
       </View>}
       ListEmptyComponent={<View style={styles.card}><Text style={styles.text}>{empty}</Text></View>}

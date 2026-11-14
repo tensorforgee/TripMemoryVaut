@@ -1,3 +1,4 @@
+import { tagName, normalizeTagNameV1 } from '../../domain/tag';
 import type { LocalDatabase, SqlConnection, SqlValue } from '../../core/database/database';
 import { mediaPath, type MediaFiles } from '../../core/media/files';
 import { migrations } from '../../core/database/migrate';
@@ -10,7 +11,7 @@ import { splitAtDateline, sameCoordinate, STOPS_ONLY_LABEL } from '../../feature
 import { roadRouteFromRow, type RoadRouteRow } from '../../features/road-route/repository';
 
 export const PORTABLE_FORMAT = 'trip-memory-vault';
-export const PORTABLE_FORMAT_VERSION = 4;
+export const PORTABLE_FORMAT_VERSION = 5;
 export const APP_VERSION = '0.1.0';
 const MAX_JSON_BYTES = 50 * 1024 * 1024;
 const MAX_ARCHIVE_BYTES = 1024 * 1024 * 1024 * 1024;
@@ -25,7 +26,7 @@ export type ArchiveFileEntry = { path: string; sha256: string; bytes: number; ki
 export type ArchiveCounts = Record<EntityName, number>;
 export type PortableManifest = {
   export_format: typeof PORTABLE_FORMAT;
-  format_version: 1 | 2 | 3 | typeof PORTABLE_FORMAT_VERSION;
+  format_version: 1 | 2 | 3 | 4 | typeof PORTABLE_FORMAT_VERSION;
   created_at: string;
   app_version: string;
   schema_version: number;
@@ -69,6 +70,9 @@ type EntitySpec = {
 };
 
 const entitySpecs = {
+  tags: { path: 'data/tags.json', table: 'tags', columns: ['id','vault_id','name','normalized_name','created_at','updated_at','deleted_at'], order: 'id' },
+  trip_tags: { path: 'data/trip-tags.json', table: 'trip_tags', columns: ['id','vault_id','trip_id','tag_id','created_at','updated_at','deleted_at'], order: 'trip_id,tag_id,id' },
+  memory_tags: { path: 'data/memory-tags.json', table: 'memory_tags', columns: ['id','vault_id','memory_id','tag_id','created_at','updated_at','deleted_at'], order: 'memory_id,tag_id,id' },
   memories: { path: 'data/memories.json', table: 'memories', columns: ['id','vault_id','trip_id','kind','title','body','dates_json','day_id','stop_id','created_at','updated_at','deleted_at'], json: { dates_json: 'dates' }, order: 'trip_id,created_at,id' },
   memory_media: { path: 'data/memory-media.json', table: 'memory_media', columns: ['id','vault_id','memory_id','media_id','created_at','updated_at','deleted_at'], order: 'memory_id,created_at,id' },
   photo_memory_pins: { path: 'data/photo-memory-pins.json', table: 'photo_memory_pins', columns: ['id','vault_id','trip_id','media_id','longitude','latitude','note','created_at','updated_at','deleted_at'], order: 'trip_id,id' },
@@ -91,7 +95,7 @@ const entitySpecs = {
 
 const names = Object.keys(entitySpecs) as EntityName[];
 function supportedEntity(name: EntityName, version: number) {
-  return (!['memories','memory_media'].includes(name) || version >= 4) && (name !== 'photo_memory_pins' || version >= 3) && (name !== 'road_route_segments' || version >= 2);
+  return (!['tags','trip_tags','memory_tags'].includes(name) || version >= 5) && (!['memories','memory_media'].includes(name) || version >= 4) && (name !== 'photo_memory_pins' || version >= 3) && (name !== 'road_route_segments' || version >= 2);
 }
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const hashPattern = /^[0-9a-f]{64}$/;
@@ -194,7 +198,10 @@ function journal(data: Record<EntityName, Row[]>): string {
   const places = new Map(data.places.map(row => [row.id, row]));
   const stops = new Map<string, Row[]>();
   for (const stop of data.stops) stops.set(String(stop.trip_id), [...(stops.get(String(stop.trip_id)) ?? []), stop]);
-  const sections = data.trips.map(trip => `<section><h2>${escapeHtml(trip.title)}</h2><p>${escapeHtml(humanDate(trip.dates))}${trip.deleted_at ? ' · In trash' : ''} · ${escapeHtml(trip.status)}</p><ol>${(stops.get(String(trip.id)) ?? []).map(stop => `<li>${escapeHtml(places.get(stop.place_id)?.name ?? 'Unknown place')} · ${escapeHtml(stop.kind)} · ${escapeHtml(stop.dates ? humanDate(stop.dates) : 'Date inherited from trip')}${stop.deleted_at ? ' · Removed' : ''}</li>`).join('')}</ol><h3>Travel memories</h3>${data.memories.filter(n=>n.trip_id===trip.id).map(n=>`<article><h4>${escapeHtml(n.title)}${n.deleted_at ? ' · Removed' : ''}</h4><p>${escapeHtml(humanDate(n.dates))}</p><p style="white-space:pre-wrap">${escapeHtml(n.body)}</p><ul>${data.memory_media.filter(a=>a.memory_id===n.id && a.deleted_at===null).map(a=>{const m=data.media.find(m=>m.id===a.media_id)!;return `<li><a href="../${portableMediaPath(String(m.sha256))}">${escapeHtml(m.original_filename ?? 'Imported photo')}</a></li>`;}).join('')}</ul></article>`).join('')}<h3>Manually placed photo memories</h3><p>These associations do not confirm visits or capture locations.</p><ul>${data.photo_memory_pins.filter(p=>p.trip_id===trip.id).map(pin=>{
+  const tagLabels = (kind: 'trip' | 'memory', id: unknown) => data[kind==='trip'?'trip_tags':'memory_tags']
+    .filter(l=>l[kind+'_id']===id && l.deleted_at===null).map(l=>data.tags.find(g=>g.id===l.tag_id && g.deleted_at===null))
+    .filter(Boolean).map(g=>escapeHtml(g!.name)).join(', ');
+  const sections = data.trips.map(trip => `<section><h2>${escapeHtml(trip.title)}</h2><p>Tags: ${tagLabels('trip',trip.id)}</p><p>${escapeHtml(humanDate(trip.dates))}${trip.deleted_at ? ' · In trash' : ''} · ${escapeHtml(trip.status)}</p><ol>${(stops.get(String(trip.id)) ?? []).map(stop => `<li>${escapeHtml(places.get(stop.place_id)?.name ?? 'Unknown place')} · ${escapeHtml(stop.kind)} · ${escapeHtml(stop.dates ? humanDate(stop.dates) : 'Date inherited from trip')}${stop.deleted_at ? ' · Removed' : ''}</li>`).join('')}</ol><h3>Travel memories</h3>${data.memories.filter(n=>n.trip_id===trip.id).map(n=>`<article><h4>${escapeHtml(n.title)}${n.deleted_at ? ' · Removed' : ''}</h4><p>${escapeHtml(humanDate(n.dates))}</p><p>Tags: ${tagLabels('memory',n.id)}</p><p style="white-space:pre-wrap">${escapeHtml(n.body)}</p><ul>${data.memory_media.filter(a=>a.memory_id===n.id && a.deleted_at===null).map(a=>{const m=data.media.find(m=>m.id===a.media_id)!;return `<li><a href="../${portableMediaPath(String(m.sha256))}">${escapeHtml(m.original_filename ?? 'Imported photo')}</a></li>`;}).join('')}</ul></article>`).join('')}<h3>Manually placed photo memories</h3><p>These associations do not confirm visits or capture locations.</p><ul>${data.photo_memory_pins.filter(p=>p.trip_id===trip.id).map(pin=>{
     const media=data.media.find(m=>m.id===pin.media_id)!;
     return `<li>${escapeHtml(pin.latitude)}, ${escapeHtml(pin.longitude)} · ${escapeHtml(pin.note ?? '')}${pin.deleted_at ? ' · Removed' : ''} · <a href="../${portableMediaPath(String(media.sha256))}">${escapeHtml(media.original_filename ?? 'Imported photo')}</a></li>`;
   }).join('')}</ul></section>`).join('');
@@ -256,7 +263,7 @@ export async function createPortableExport(input: { database: LocalDatabase; vau
     for (const name of names) await addText(input.io, input.stagingRoot, files, entitySpecs[name].path,
       stableJson({ entity: name, format_version: PORTABLE_FORMAT_VERSION, records: data[name] }), 'data');
     await addText(input.io, input.stagingRoot, files, 'README.txt', 'Trip Memory Vault portable export\n\nOpen journal/index.html for a readable view. JSON under data/ is authoritative. Original media is byte-preserved under media/originals/. Do not edit files if you intend to restore this package.\n', 'documentation');
-    await addText(input.io, input.stagingRoot, files, 'schemas/v4/README.txt', 'Format v4 adds memories (title, body, nullable DateSpec, one optional same-trip day or Stop context, timestamps, tombstones) and memory_media (stable attachment IDs referencing shared Media, timestamps, tombstones). Draft editor text is local recovery state and is not exported. V1/v2/v3 restore with no written memories. Older readers must refuse v4. Format v3 adds photo_memory_pins: id, vault_id, trip_id, media_id, longitude (-180..180), latitude (-90..90), optional note (max 10000 characters), created_at, updated_at, deleted_at. Manual photo associations never confirm visits or change capture metadata. Media IDs reference shared immutable originals. Version 2 road_route_segments remain unchanged. Older readers must refuse v3. IDs, tombstones, nulls and structured DateSpec values are preserved. All payload files have SHA-256 and byte length in manifest.files. Route geometry is provider-derived, never proof of historical travel.\n', 'schema');
+    await addText(input.io, input.stagingRoot, files, 'schemas/v5/README.txt', 'Format v5 adds tags, trip_tags and memory_tags with stable IDs and tombstones. Names use normalizeTagNameV1. V1-v4 restore with empty tag tables; earlier readers must reject v5. Format v4 adds memories (title, body, nullable DateSpec, one optional same-trip day or Stop context, timestamps, tombstones) and memory_media (stable attachment IDs referencing shared Media, timestamps, tombstones). Draft editor text is local recovery state and is not exported. V1/v2/v3 restore with no written memories. Older readers must refuse v4. Format v3 adds photo_memory_pins: id, vault_id, trip_id, media_id, longitude (-180..180), latitude (-90..90), optional note (max 10000 characters), created_at, updated_at, deleted_at. Manual photo associations never confirm visits or change capture metadata. Media IDs reference shared immutable originals. Version 2 road_route_segments remain unchanged. Older readers must refuse v3. IDs, tombstones, nulls and structured DateSpec values are preserved. All payload files have SHA-256 and byte length in manifest.files. Route geometry is provider-derived, never proof of historical travel.\n', 'schema');
     await addText(input.io, input.stagingRoot, files, 'journal/index.html', journal(data), 'journal');
     await addText(input.io, input.stagingRoot, files, 'routes/routes.geojson', stableJson(routes(data)), 'route');
     for (const asset of originals) {
@@ -302,9 +309,9 @@ async function readAndVerify(io: ArchiveIO, root: string): Promise<VerifiedArchi
   if (byteLength(manifestText) > MAX_JSON_BYTES) fail('Manifest is too large');
   const raw = object(parseJson(manifestText, 'manifest.json'), 'manifest.json');
   if (raw.export_format !== PORTABLE_FORMAT) fail('This is not a Trip Memory Vault export');
-  if (raw.format_version !== 1 && raw.format_version !== 2 && raw.format_version !== 3 && raw.format_version !== PORTABLE_FORMAT_VERSION) fail(`Unsupported export format version: ${String(raw.format_version)}`);
+  if (raw.format_version !== 1 && raw.format_version !== 2 && raw.format_version !== 3 && raw.format_version !== 4 && raw.format_version !== PORTABLE_FORMAT_VERSION) fail(`Unsupported export format version: ${String(raw.format_version)}`);
   if ((raw.format_version === 1 && Number(raw.schema_version) > 10) || (raw.format_version === 2 && Number(raw.schema_version) !== 11)
-    || (raw.format_version === 3 && Number(raw.schema_version) !== 12) || (raw.format_version === 4 && ![13,14].includes(Number(raw.schema_version)))) fail('Archive format/schema version mismatch');
+    || (raw.format_version === 3 && Number(raw.schema_version) !== 12) || (raw.format_version === 4 && ![13,14].includes(Number(raw.schema_version))) || (raw.format_version === 5 && raw.schema_version !== 15)) fail('Archive format/schema version mismatch');
   if(!Number.isSafeInteger(raw.schema_version)||Number(raw.schema_version)<1||Number(raw.schema_version)>migrations.length)fail(`Unsupported archive schema version: ${String(raw.schema_version)}`);
   if (!uuidPattern.test(String(object(raw.vault, 'manifest.vault').id))) fail('Manifest vault ID is invalid');
   if (!Array.isArray(raw.files)) fail('Manifest files list is missing');
@@ -321,6 +328,7 @@ async function readAndVerify(io: ArchiveIO, root: string): Promise<VerifiedArchi
     return { path, sha256: String(row.sha256), bytes: Number(row.bytes), kind: row.kind as FileKind };
   });
   for (const name of ['memories','memory_media'] as const) if (Number(raw.format_version) < 4 && (seen.has(entitySpecs[name].path) || object(raw.counts,'counts')[name] !== undefined)) fail('Written memories require portable format v4');
+  for (const name of ['tags','trip_tags','memory_tags'] as const) if (Number(raw.format_version) < 5 && (seen.has(entitySpecs[name].path) || object(raw.counts,'counts')[name] !== undefined)) fail('Tags require portable format v5');
   const archiveNames = names.filter(name => supportedEntity(name,Number(raw.format_version)));
   if (Number(raw.format_version) < 3 && (seen.has(entitySpecs.photo_memory_pins.path) || object(raw.counts,'counts').photo_memory_pins !== undefined)) fail('Photo memories require portable format v3');
   if (raw.format_version === 1 && (seen.has(entitySpecs.road_route_segments.path) || object(raw.counts,'counts').road_route_segments !== undefined)) fail('Road routes require portable format v2');
@@ -332,6 +340,7 @@ async function readAndVerify(io: ArchiveIO, root: string): Promise<VerifiedArchi
   const data = {} as Record<EntityName, Row[]>;
   data.road_route_segments = [];
   data.photo_memory_pins = [];
+  data.tags = []; data.trip_tags = []; data.memory_tags = [];
   data.memories = [];
   data.memory_media = [];
   for (const name of archiveNames) {
@@ -381,6 +390,21 @@ function validateData(manifest: PortableManifest, data: Record<EntityName, Row[]
   const tripIds=ids(data.trips,'trips'), placeIds=ids(data.places,'places'), dayIds=ids(data.trip_days,'trip_days'), stopIds=ids(data.stops,'stops');
   const mediaIds=ids(data.media,'media'), companionIds=ids(data.companions,'companions'), chapterIds=ids(data.chapters,'chapters');
   const memoryIds = ids(data.memories,'memories');
+  const tagIds=ids(data.tags,'tags');
+  uniqueActive(data.tags,['normalized_name'],'tag name');
+  for (const tag of data.tags) if (tagName(tag.name)!==tag.name || normalizeTagNameV1(tag.name)!==tag.normalized_name) fail('Invalid normalized tag name');
+  for (const [name,field,parent] of [['trip_tags','trip_id',tripIds],['memory_tags','memory_id',memoryIds]] as const) {
+    ids(data[name],name); reference(data[name],field,parent,name); reference(data[name],'tag_id',tagIds,name);
+    const pairs=new Set<string>();
+    for (const link of data[name]) {
+      const pair=String(link[field])+':'+String(link.tag_id); if(pairs.has(pair)) fail('Duplicate tag membership'); pairs.add(pair);
+      if (link.deleted_at===null && data.tags.find(g=>g.id===link.tag_id)?.deleted_at!==null) fail('Membership references deleted tag');
+      if (name==='memory_tags' && link.deleted_at===null && data.memories.find(n=>n.id===link.memory_id)?.deleted_at!==null) fail('Membership references deleted memory');
+    }
+  }
+  for (const row of [...data.tags,...data.trip_tags,...data.memory_tags]) for (const field of ['created_at','updated_at','deleted_at']) {
+    if(field==='deleted_at' && row[field]===null) continue; utcTimestamp(row[field],field);
+  }
   ids(data.memory_media,'memory_media');
   reference(data.memories,'trip_id',tripIds,'memories');
   reference(data.memories,'day_id',dayIds,'memories',true);
@@ -521,6 +545,9 @@ export async function restorePortableArchive(input: { database: LocalDatabase; c
       await insertRows(connection,'photo_memory_pins',verified.data.photo_memory_pins);
       await insertRows(connection,'memories',verified.data.memories);
       await insertRows(connection,'memory_media',verified.data.memory_media);
+      await insertRows(connection,'tags',verified.data.tags);
+      await insertRows(connection,'trip_tags',verified.data.trip_tags);
+      await insertRows(connection,'memory_tags',verified.data.memory_tags);
       await insertRows(connection,'companions',verified.data.companions,row=>patched(row,{deleted_at:null}));
       await insertRows(connection,'trip_companions',verified.data.trip_companions);
       await insertRows(connection,'chapters',verified.data.chapters,row=>patched(row,{deleted_at:null}));

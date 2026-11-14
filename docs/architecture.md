@@ -1321,3 +1321,35 @@ are local recovery state and are not portable finalized memories. Readers retain
 v1/v2/v3 compatibility with empty written-memory tables; earlier readers reject
 v4. Restore stays empty-vault-only and rebuilds FTS before commit. ORS geometry
 persistence, map pins and original metadata are unchanged.
+
+
+## 30. Scoped extension: reusable tags — 13 November 2026
+
+Migration 15 adds vault-owned `tags`, `trip_tags` and `memory_tags`. Tags have
+stable UUIDs, display/normalized names, audit timestamps and tombstones. Both
+membership tables have stable IDs and a unique vault/target/tag pair; reattachment
+reuses that row. Trip and written-Memory tags are independent, never inherited.
+Names are limited to 80 characters. `normalizeTagNameV1` applies NFKC, whitespace
+collapse, locale-independent lowercase, sharp-s and final-sigma equivalence;
+active normalized names are unique. No external service participates.
+
+Tag selection commits immediately on saved Trip/Memory detail screens, separately
+from content editors, so editing text/dates/photos cannot replace associations.
+Deletion requires confirmation, tombstones the tag and its live memberships, and
+retains all content/media. Trip trash hides memberships through the parent and
+restoration exposes the original independent detach state. Memory removal
+also tombstones its memberships. No tag restore/purge UI is introduced.
+
+Search index version 3 adds one canonical FTS document per active Tag. Renames
+and removals update it transactionally. Membership joins resolve matching tag
+names to active Trips/Memories; all selected tag filters apply before limits.
+A filter applies to direct assignments only. Empty text plus selected tags browses
+matching items; existing FTS behavior for other sources remains unchanged.
+Migrations 1–14 and their imported search projections are frozen.
+
+Portable v5/schema 15 adds required tags, trip-tags and memory-tags payloads,
+manifest counts and escaped tag labels in the readable journal. Inspection checks
+normalization, name/pair uniqueness, ownership, references, timestamps and version
+smuggling. Restore keeps stable IDs/tombstones and rebuilds FTS. V1–v4 archives
+restore with empty tag tables. Earlier readers must reject v5. HEIC originals,
+map geometry, source metadata and ORS provenance are unchanged.

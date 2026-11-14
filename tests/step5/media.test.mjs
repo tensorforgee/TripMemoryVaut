@@ -188,7 +188,7 @@ test('v13 to v14 rebuild preserves populated evidence, every media guard, relati
   const tables=['media','trip_media','local_media_files','import_items','photo_memory_pins','memories','memory_media','search_documents'];
   const before=await Promise.all(tables.map(n=>f.connection.getAllAsync(`SELECT * FROM ${n}`)));
   const guards=await f.connection.getAllAsync("SELECT name,sql FROM sqlite_schema WHERE type='trigger' ORDER BY name");
-  await migrateDatabase(f.database,f.services);
+  await migrateDatabase(f.database,f.services,migrations.slice(0,14));
   assert.deepEqual(await Promise.all(tables.map(n=>f.connection.getAllAsync(`SELECT * FROM ${n}`))),before);
   assert.deepEqual(await f.connection.getAllAsync("SELECT name,sql FROM sqlite_schema WHERE type='trigger' ORDER BY name"),guards);
   assert.equal((await f.connection.getFirstAsync('PRAGMA foreign_keys')).foreign_keys,1);

@@ -1,6 +1,16 @@
 # Portable vault export format v1
 
-**Current writer: format v4, schema 14.** V4 readers accept schema 13 and 14. V4 adds required `data/memories.json`
+**Current writer: format v5, schema 15.** V5 adds required `data/tags.json`,
+`data/trip-tags.json`, `data/memory-tags.json`, corresponding counts and
+`schemas/v5/README.txt`. Tag and membership UUIDs, audit/tombstone timestamps,
+normalized names and direct assignments survive restore. Multiple assignments
+reference one shared Tag. The journal includes escaped tag names beside Trips
+and Memories. Inspection rejects noncanonical names, duplicate normalized active
+names/pairs, dangling or cross-vault references, invalid timestamps and tag
+payloads smuggled into v1–v4. V1–v4 restore with empty tag tables; older readers
+must reject v5. Empty-vault-only restore and immutable original checks are unchanged.
+
+**Historical v4 writer: schema 14.** V4 readers accept schema 13 and 14. V4 adds required `data/memories.json`
 and `data/memory-media.json`, matching manifest counts, and `schemas/v4/README.txt`.
 Written memories preserve titles, bodies, nullable/unknown/approximate DateSpecs,
 same-trip section/Stop anchors, timestamps and tombstones. Attachment rows preserve
@@ -14,7 +24,7 @@ read-only validation. Earlier readers must reject v4. ORS records are unchanged.
 The original v1 contract below remains
 historical documentation. V2 added confirmed road segments. V3 adds required
 `data/photo-memory-pins.json` and `manifest.counts.photo_memory_pins`; the schema
-description was `schemas/v3/README.txt`. Current readers accept v1, v2, v3 and v4.
+description was `schemas/v3/README.txt`. Current readers accept v1, v2, v3, v4 and v5.
 V1/v2 omit pins and restore an empty pin table; they cannot carry undeclared pin
 records. Readers predating v3 reject the new version instead of dropping pins.
 

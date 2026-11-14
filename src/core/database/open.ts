@@ -1,3 +1,4 @@
+import { TagRepository } from '../../features/tags/repository';
 import { backupDatabaseAsync, openDatabaseAsync, type SQLiteDatabase } from 'expo-sqlite';
 import { CryptoDigestAlgorithm, digestStringAsync, randomUUID } from 'expo-crypto';
 import { configureConnection, LocalDatabase } from './database';
@@ -58,6 +59,7 @@ export type VaultDatabase = {
   timeline: TimelineRepository;
   companions: CompanionRepository;
   chapters: ChapterRepository;
+  tags: TagRepository;
   life: TravelLifeRepository;
   dreams: DreamRepository;
   map: GlobalMapRepository;
@@ -75,6 +77,7 @@ function createVaultHandle(databaseName: string, database: LocalDatabase, vault:
     timeline: new TimelineRepository(database, vault.id, randomUUID),
     roadRoutes: new RoadRouteRepository(database, vault.id, randomUUID),
     companions: new CompanionRepository(database, vault.id, randomUUID), chapters: new ChapterRepository(database, vault.id, randomUUID),
+    tags: new TagRepository(database, vault.id, randomUUID),
     life: new TravelLifeRepository(database, vault.id),
     dreams: new DreamRepository(database, vault.id, randomUUID),
     map: new GlobalMapRepository(database, vault.id),

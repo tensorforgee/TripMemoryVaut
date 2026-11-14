@@ -1,7 +1,7 @@
 import type { LocalDatabase, SqlConnection } from '../../core/database/database';
 import { migrations } from '../../core/database/migrate';
 import { mediaPath } from '../../core/media/files';
-import { CURRENT_SEARCH_INDEX_VERSION, rebuildSearchIndex, currentSearchDocumentSelect } from '../search/schema';
+import { CURRENT_SEARCH_INDEX_VERSION, rebuildSearchIndex, tagSearchDocumentSelect } from '../search/schema';
 import { roadRouteIntegrity } from '../road-route/repository';
 
 export const STALE_STAGING_MS=24*60*60*1000;
@@ -134,15 +134,15 @@ export class VaultMaintenance {
       const version=number((await connection.getFirstAsync<{user_version:number}>('PRAGMA user_version'))?.user_version);
       let migrationIssues=version===migrations.length&&history.length===migrations.length?0:1;
       for(const [index,migration] of migrations.entries())if(history[index]?.version!==migration.version||history[index]?.checksum!==await this.sha256Text(migration.sql))migrationIssues++;
-      const expectedCount=number((await connection.getFirstAsync<{count:number}>(`SELECT count(*) count FROM (${currentSearchDocumentSelect}) expected WHERE vault_id=?`,this.vaultId))?.count);
+      const expectedCount=number((await connection.getFirstAsync<{count:number}>(`SELECT count(*) count FROM (${tagSearchDocumentSelect}) expected WHERE vault_id=?`,this.vaultId))?.count);
       const documentCount=number((await connection.getFirstAsync<{count:number}>('SELECT count(*) count FROM search_documents WHERE vault_id=?',this.vaultId))?.count);
       const state=await connection.getFirstAsync<{index_version:number}>('SELECT index_version FROM search_index_state WHERE vault_id=?',this.vaultId);
       const projectionDiff=number((await connection.getFirstAsync<{count:number}>(`SELECT count(*) count FROM (
-        SELECT vault_id,entity_type,entity_id,trip_id,title,body FROM (${currentSearchDocumentSelect}) expected WHERE vault_id=?
+        SELECT vault_id,entity_type,entity_id,trip_id,title,body FROM (${tagSearchDocumentSelect}) expected WHERE vault_id=?
         EXCEPT SELECT vault_id,entity_type,entity_id,trip_id,title,body FROM search_documents WHERE vault_id=?
       )`,this.vaultId,this.vaultId))?.count)+number((await connection.getFirstAsync<{count:number}>(`SELECT count(*) count FROM (
         SELECT vault_id,entity_type,entity_id,trip_id,title,body FROM search_documents WHERE vault_id=?
-        EXCEPT SELECT vault_id,entity_type,entity_id,trip_id,title,body FROM (${currentSearchDocumentSelect}) expected WHERE vault_id=?
+        EXCEPT SELECT vault_id,entity_type,entity_id,trip_id,title,body FROM (${tagSearchDocumentSelect}) expected WHERE vault_id=?
       )`,this.vaultId,this.vaultId))?.count);
       const interrupted=number((await connection.getFirstAsync<{count:number}>(`SELECT count(*) count FROM import_items
         WHERE vault_id=? AND state IN ('selected','copying','staged','verified')`,this.vaultId))?.count);

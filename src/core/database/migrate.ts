@@ -1,3 +1,4 @@
+import { tagsSchema } from './migrations/0015-tags';
 import { inTransaction, type LocalDatabase, type SqlConnection } from './database';
 import { initialSchema } from './migrations/0001-vault-trips';
 import { placesStopsSchema } from './migrations/0002-places-stops';
@@ -16,7 +17,7 @@ import { travelMemoriesSchema } from './migrations/0013-travel-memories';
 import { heicSchema } from './migrations/0014-heic';
 
 export type Migration = { readonly version: number; readonly sql: string; readonly rebuildTables?: boolean };
-export const migrations: readonly Migration[] = [{ version: 1, sql: initialSchema }, { version: 2, sql: placesStopsSchema }, { version: 3, sql: tripDaysSchema }, { version: 4, sql: mediaSchema }, { version: 5, sql: mediaGuardsSchema }, { version: 6, sql: reconstructionSchema }, { version: 7, sql: reconstructionProvenanceSchema }, { version: 8, sql: companionsChaptersSchema }, { version: 9, sql: dreamPlacesSchema }, { version: 10, sql: searchSchema }, { version: 11, sql: roadRoutesSchema }, { version: 12, sql: photoMemoryPinsSchema }, { version: 13, sql: travelMemoriesSchema }, { version: 14, sql: heicSchema, rebuildTables: true }];
+export const migrations: readonly Migration[] = [{ version: 1, sql: initialSchema }, { version: 2, sql: placesStopsSchema }, { version: 3, sql: tripDaysSchema }, { version: 4, sql: mediaSchema }, { version: 5, sql: mediaGuardsSchema }, { version: 6, sql: reconstructionSchema }, { version: 7, sql: reconstructionProvenanceSchema }, { version: 8, sql: companionsChaptersSchema }, { version: 9, sql: dreamPlacesSchema }, { version: 10, sql: searchSchema }, { version: 11, sql: roadRoutesSchema }, { version: 12, sql: photoMemoryPinsSchema }, { version: 13, sql: travelMemoriesSchema }, { version: 14, sql: heicSchema, rebuildTables: true }, { version: 15, sql: tagsSchema }];
 
 export interface MigrationBackup {
   path: string;

@@ -14,7 +14,7 @@ Search is a derived, offline view over canonical SQLite rows. It uses no network
 - TripMedia: user caption only, only while its Trip, placement, and Media are active.
 
 Migration 13 adds Memory title and body, with results opening the selected memory
-within its Trip. Draft editor text is not indexed. There is still no Tag table.
+within its Trip. Draft editor text is not indexed. Migration 15 adds reusable Tags and search index version 3.
 Dates, coordinates, EXIF, filenames, reconstruction proposals, rejected
 suggestions, and binary media are not indexed. DateSpec is displayed as context
 for Trip results but is deliberately not searchable.
@@ -55,3 +55,19 @@ Active Places remain searchable as independent canonical archive entities even i
 There is no semantic matching, typo tolerance, stemming guarantee, quoted-phrase language, highlighting, date search, or substring match inside a token. Place results open the existing Places visited context because the application does not yet have a standalone Place detail route. Stop, TripDay, and caption hits open their owning Trip.
 
 Android verification should cover title/Place/Companion/Chapter/Dream/note/caption queries, navigation, rename, trash/restore, archive/restore, force-stop plus offline relaunch, and punctuation-only/malformed input. Portable restore should be checked when a test package is available. Record device/build evidence in the implementation report; automated SQLite coverage is not a substitute for emulator verification.
+
+
+## Tags and organization
+
+Active tag names participate in FTS prefix/diacritic matching; normalized substring
+matching also resolves short/equivalent names. Results open the directly tagged
+Trip or Memory. Unused tags are managed through the tag selector, not result cards.
+The tag selector supports create/rename/confirmed delete as well as selection.
+Selecting multiple tags means **all selected**, applied independently to each
+Trip/Memory, before the 30-result cap. Trip tags are not inherited by memories.
+Empty search text with tags browses matching content. Text plus tags restricts
+matching text/tag-name results to those assignments. Removed tags and parent
+trash are excluded; restoring a Trip preserves independently detached links.
+
+Migration 15 rebuilds only the derived index at version 3 and adds tag triggers.
+Migration 10/v1 and migration 13/v2 SQL/projection constants remain frozen.

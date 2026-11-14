@@ -66,13 +66,14 @@ async function seed(f,mediaFiles,extension="jpg"){
   return {...ids,hash,relative,bytes};
 }
 async function exported(t){const f=await fixture(t);const io=new NodeIO();const sourceMedia=new MediaFiles(join(dirname(f.path),'source-vault'));const ids=await seed(f,sourceMedia);const staging=join(dirname(f.path),'stage');const published=join(dirname(f.path),'published');const result=await createPortableExport({database:f.database,vaultId:f.vault.id,io,mediaFiles:sourceMedia,stagingRoot:staging,now:()=>stamp});await publishPortableExport(io,staging,published);return{f,io,sourceMedia,ids,staging,published,result};}
+function stripTags(m){ for(const key of ['tags','trip_tags','memory_tags'])delete m.counts[key];m.files=m.files.filter(f=>!['data/tags.json','data/trip-tags.json','data/memory-tags.json'].includes(f.path)); }
 async function rewriteManifest(io,root,mutate){const manifest=JSON.parse(await io.readText(root,'manifest.json'));mutate(manifest);const text=JSON.stringify(manifest,null,2)+'\n';await io.writeText(root,'manifest.json',text);await io.writeText(root,'COMPLETE.json',JSON.stringify({manifest_sha256:await io.sha256Text(text)},null,2)+'\n');}
 async function rewriteData(io,root,path,mutate){const value=JSON.parse(await io.readText(root,path));mutate(value);const text=JSON.stringify(value,null,2)+'\n';await io.writeText(root,path,text);await rewriteManifest(io,root,m=>{const file=m.files.find(x=>x.path===path);file.bytes=Buffer.byteLength(text);file.sha256=createHash('sha256').update(text).digest('hex');});}
 
-test('format v4 export is deterministic, structured, complete and excludes device/import state',async t=>{
+test('format v5 export is deterministic, structured, complete and excludes device/import state',async t=>{
   const x=await exported(t);const second=join(dirname(x.f.path),'stage-two');const again=await createPortableExport({database:x.f.database,vaultId:x.f.vault.id,io:x.io,mediaFiles:x.sourceMedia,stagingRoot:second,now:()=>stamp});
   assert.equal(await x.io.readText(x.staging,'manifest.json'),await x.io.readText(second,'manifest.json'));
-  assert.equal(again.manifest.format_version,4);assert.equal(again.manifest.vault.id,x.f.vault.id);assert.equal(again.manifest.counts.trips,2);assert.equal(again.manifest.counts.reconstruction_history,2);
+  assert.equal(again.manifest.format_version,5);assert.equal(again.manifest.vault.id,x.f.vault.id);assert.equal(again.manifest.counts.trips,2);assert.equal(again.manifest.counts.reconstruction_history,2);
   const trips=JSON.parse(await x.io.readText(x.staging,'data/trips.json')).records;assert.deepEqual(trips.find(r=>r.id===x.ids.trip).dates,approximate);assert.ok(trips.find(r=>r.id===x.ids.trashedTrip).deleted_at);
   const media=await readFile(join(x.staging,'media','originals',x.ids.hash.slice(0,2),`${x.ids.hash}.original`));assert.deepEqual(media,x.ids.bytes);assert.equal(createHash('sha256').update(media).digest('hex'),x.ids.hash);
   const all=(await Promise.all(again.manifest.files.filter(f=>f.kind==='data').map(f=>x.io.readText(second,f.path)))).join('');assert.doesNotMatch(all,/source_uri|staging_relative_path|cache|content:\/\//);
@@ -215,7 +216,7 @@ test('legacy format v1 restores through the current schema and survives FTS clos
     await rewriteData(x.io,legacy,file.path,data=>{data.format_version=1;});
   }
   await rewriteManifest(x.io,legacy,m=>{
-    m.format_version=1;m.schema_version=10;delete m.counts.road_route_segments;delete m.counts.photo_memory_pins;delete m.counts.memories;delete m.counts.memory_media;
+    stripTags(m);m.format_version=1;m.schema_version=10;delete m.counts.road_route_segments;delete m.counts.photo_memory_pins;delete m.counts.memories;delete m.counts.memory_media;
     m.files=m.files.filter(f=>!['data/memories.json','data/memory-media.json'].includes(f.path)).filter(file=>file.path!=='data/road-route-segments.json' && file.path!=='data/photo-memory-pins.json');
   });
   await unlink(join(legacy,'data/road-route-segments.json'));
@@ -226,7 +227,7 @@ test('legacy format v1 restores through the current schema and survives FTS clos
   try {
     assert.equal((await connection.getFirstAsync('SELECT id FROM vaults')).id,x.f.vault.id);
     assert.equal((await connection.getFirstAsync('SELECT count(*) n FROM road_route_segments')).n,0);
-    assert.equal((await connection.getFirstAsync('PRAGMA user_version')).user_version,14);
+    assert.equal((await connection.getFirstAsync('PRAGMA user_version')).user_version,15);
     assert.equal((await connection.getFirstAsync('PRAGMA integrity_check')).integrity_check,'ok');
     assert.deepEqual(await connection.getAllAsync('PRAGMA foreign_key_check'),[]);
     assert.deepEqual(await readFile(files.uri(x.ids.relative)),x.ids.bytes);
@@ -261,14 +262,14 @@ test('legacy format v1 restores through the current schema and survives FTS clos
     await rewriteData(x.io,root,'data/photo-memory-pins.json',d=>d.records=[pin]);await rewriteManifest(x.io,root,m=>m.counts.photo_memory_pins=1);
     await assert.rejects(inspectPortableRestore(x.io,root));
   }
-  await rewriteManifest(x.io,x.published,m=>{m.format_version=2;m.schema_version=11;delete m.counts.memories;delete m.counts.memory_media;m.files=m.files.filter(f=>!['data/memories.json','data/memory-media.json'].includes(f.path));});
+  await rewriteManifest(x.io,x.published,m=>{stripTags(m);m.format_version=2;m.schema_version=11;delete m.counts.memories;delete m.counts.memory_media;m.files=m.files.filter(f=>!['data/memories.json','data/memory-media.json'].includes(f.path));});
   await assert.rejects(inspectPortableRestore(x.io,x.published),/require portable format v3/);
  });
 
  test('v2 archives restore with no invented pins through schema 13',async t=>{
   const x=await exported(t),manifest=JSON.parse(await x.io.readText(x.staging,'manifest.json'));
   for(const file of manifest.files.filter(f=>f.kind==='data'&&f.path!=='data/photo-memory-pins.json')) await rewriteData(x.io,x.staging,file.path,d=>d.format_version=2);
-  await rewriteManifest(x.io,x.staging,m=>{m.format_version=2;m.schema_version=11;delete m.counts.photo_memory_pins;delete m.counts.memories;delete m.counts.memory_media;m.files=m.files.filter(f=>!['data/memories.json','data/memory-media.json'].includes(f.path)).filter(f=>f.path!=='data/photo-memory-pins.json');});
+  await rewriteManifest(x.io,x.staging,m=>{stripTags(m);m.format_version=2;m.schema_version=11;delete m.counts.photo_memory_pins;delete m.counts.memories;delete m.counts.memory_media;m.files=m.files.filter(f=>!['data/memories.json','data/memory-media.json'].includes(f.path)).filter(f=>f.path!=='data/photo-memory-pins.json');});
   const fresh=await fixture(t),dest=new MediaFiles(join(dirname(fresh.path),'legacy-v2'));
   await restorePortableArchive({database:fresh.database,currentVaultId:fresh.vault.id,io:x.io,archiveRoot:x.staging,destinationMedia:dest,newStagingId:randomUUID});
   assert.deepEqual(await fresh.connection.getAllAsync('SELECT * FROM photo_memory_pins'),[]);
@@ -288,7 +289,7 @@ test('v4 written memories roundtrip dates, context, shared originals and indepen
   await repo.save(ids.trashedTrip,{...input,title:'Trashed trip recollection',dates:unknown,dayId:null,stopId:ids.trashStop});
   await f.trips.trashTrip(ids.trashedTrip);
   const root=join(dirname(f.path),'written-export');const result=await createPortableExport({database:f.database,vaultId:f.vault.id,io,mediaFiles:source,stagingRoot:root});
-  assert.equal(result.manifest.format_version,4);assert.equal(result.manifest.counts.memories,3);assert.equal(result.manifest.media_count,1);
+  assert.equal(result.manifest.format_version,5);assert.equal(result.manifest.counts.memories,3);assert.equal(result.manifest.media_count,1);
   const html=await io.readText(root,'journal/index.html');assert.match(html,/&lt;Memory&gt; &amp; friends/);assert.match(html,/orchard recollection/);assert.match(html,/~2009/);
   const fresh=await fixture(t),dest=new MediaFiles(join(dirname(fresh.path),'written-restored'));
   await restorePortableArchive({database:fresh.database,currentVaultId:fresh.vault.id,io,archiveRoot:root,destinationMedia:dest,newStagingId:randomUUID});
@@ -307,7 +308,7 @@ test('legacy v3 restores photo pins and no invented written memories',async t=>{
   await rewriteData(x.io,legacy,'data/photo-memory-pins.json',d=>d.records=[pin]);await rewriteManifest(x.io,legacy,m=>m.counts.photo_memory_pins=1);
   const manifest=JSON.parse(await x.io.readText(legacy,'manifest.json'));
   for(const file of manifest.files.filter(f=>f.kind==='data'&&!['data/memories.json','data/memory-media.json'].includes(f.path)))await rewriteData(x.io,legacy,file.path,d=>d.format_version=3);
-  await rewriteManifest(x.io,legacy,m=>{m.format_version=3;m.schema_version=12;delete m.counts.memories;delete m.counts.memory_media;m.files=m.files.filter(f=>!['data/memories.json','data/memory-media.json'].includes(f.path));});
+  await rewriteManifest(x.io,legacy,m=>{stripTags(m);m.format_version=3;m.schema_version=12;delete m.counts.memories;delete m.counts.memory_media;m.files=m.files.filter(f=>!['data/memories.json','data/memory-media.json'].includes(f.path));});
   const fresh=await fixture(t),files=new MediaFiles(join(dirname(fresh.path),'v3-media'));
   await restorePortableArchive({database:fresh.database,currentVaultId:fresh.vault.id,io:x.io,archiveRoot:legacy,destinationMedia:files,newStagingId:randomUUID});
   assert.deepEqual(await fresh.connection.getAllAsync('SELECT * FROM memories'),[]);assert.deepEqual(await fresh.connection.getAllAsync('SELECT * FROM memory_media'),[]);
@@ -325,14 +326,14 @@ test('v4 memory validation rejects invalid dates, cross-trip context, dangling p
   const root=join(dirname(x.f.path),'bad-attachment');await cp(x.staging,root,{recursive:true});
   await rewriteData(x.io,root,'data/memories.json',d=>d.records=[memory]);await rewriteData(x.io,root,'data/memory-media.json',d=>d.records=[{id:randomUUID(),vault_id:x.f.vault.id,memory_id:memory.id,media_id:randomUUID(),created_at:stamp,updated_at:stamp,deleted_at:null}]);
   await rewriteManifest(x.io,root,m=>{m.counts.memories=1;m.counts.memory_media=1;});await assert.rejects(inspectPortableRestore(x.io,root),/Broken reference/);
-  await rewriteManifest(x.io,x.published,m=>{m.format_version=3;m.schema_version=12;});await assert.rejects(inspectPortableRestore(x.io,x.published),/require portable format v4/);
+  await rewriteManifest(x.io,x.published,m=>{stripTags(m);m.format_version=3;m.schema_version=12;});await assert.rejects(inspectPortableRestore(x.io,x.published),/require portable format v4/);
 });
 
-test('v4 HEIC and HEIF originals survive export/restore byte-identically without a format migration',async t=>{
+test('v5 HEIC and HEIF originals survive export/restore byte-identically',async t=>{
   for(const ext of ['heic','heif']) {
     const f=await fixture(t),io=new NodeIO(),files=new MediaFiles(join(dirname(f.path),'heic-source')),ids=await seed(f,files,ext);
     const root=join(dirname(f.path),'heic-export');const exported=await createPortableExport({database:f.database,vaultId:f.vault.id,io,mediaFiles:files,stagingRoot:root});
-    assert.equal(exported.manifest.format_version,4);assert.equal(exported.manifest.schema_version,14);
+    assert.equal(exported.manifest.format_version,5);assert.equal(exported.manifest.schema_version,15);
     const inspected=await inspectPortableRestore(io,root);assert.equal(inspected.manifest.media_count,1);
     const fresh=await fixture(t),restored=new MediaFiles(join(dirname(fresh.path),'heic-restored'));
     await restorePortableArchive({database:fresh.database,currentVaultId:fresh.vault.id,io,archiveRoot:root,destinationMedia:restored,newStagingId:randomUUID});
@@ -343,8 +344,49 @@ test('v4 HEIC and HEIF originals survive export/restore byte-identically without
 });
 
 test('pre-HEIC v4 schema 13 archives still restore',async t=>{
-  const x=await exported(t);await rewriteManifest(x.io,x.published,m=>m.schema_version=13);
+  const x=await exported(t);
+  for(const f of x.result.manifest.files.filter(f=>f.kind==='data'))await rewriteData(x.io,x.published,f.path,d=>d.format_version=4);
+  await rewriteManifest(x.io,x.published,m=>{stripTags(m);m.format_version=4;m.schema_version=13;});
   const fresh=await fixture(t),files=new MediaFiles(join(dirname(fresh.path),'v4-schema13'));
   await restorePortableArchive({database:fresh.database,currentVaultId:fresh.vault.id,io:x.io,archiveRoot:x.published,destinationMedia:files,newStagingId:randomUUID});
   assert.deepEqual(await readFile(files.uri(x.ids.relative)),x.ids.bytes);
+});
+
+
+test('v5 tags roundtrip stable memberships, parent trash and independent deletion; journal escapes names',async t=>{
+ const x=await exported(t);const {TagRepository}=await import('../../.expo/step1-tests/features/tags/repository.js');
+ const {MemoryRepository}=await import('../../.expo/step1-tests/features/memories/repository.js');
+ const tags=new TagRepository(x.f.database,x.f.vault.id,randomUUID),memories=new MemoryRepository(x.f.database,x.f.vault.id,randomUUID);
+ const memory=await memories.save(x.ids.trip,{title:'Tagged memory',body:'Written history',dates:null,dayId:null,stopId:null,mediaIds:[x.ids.media]});
+ const a=await tags.create('<Hiking>'),b=await tags.create('Removed'),c=await tags.create('Detached');
+ for(const g of [a,b,c])for(const target of [{kind:'trip',id:x.ids.trip},{kind:'memory',id:memory}])await tags.setAttached(target,g.id,true);
+ await tags.remove(b.id);await tags.setAttached({kind:'memory',id:memory},c.id,false);await x.f.trips.trashTrip(x.ids.trip);
+ const root=join(dirname(x.f.path),'tags-export');await createPortableExport({database:x.f.database,vaultId:x.f.vault.id,io:x.io,mediaFiles:x.sourceMedia,stagingRoot:root});
+ assert.match(await x.io.readText(root,'journal/index.html'),/&lt;Hiking&gt;/);
+ const fresh=await fixture(t),files=new MediaFiles(join(dirname(fresh.path),'tags-media'));
+ await restorePortableArchive({database:fresh.database,currentVaultId:fresh.vault.id,io:x.io,archiveRoot:root,destinationMedia:files,newStagingId:randomUUID});
+ for(const table of ['tags','trip_tags','memory_tags'])assert.deepEqual(await fresh.connection.getAllAsync(`SELECT * FROM ${table} ORDER BY id`),await x.f.connection.getAllAsync(`SELECT * FROM ${table} ORDER BY id`));
+ const {TripRepository}=await import('../../.expo/step1-tests/features/trips/repository.js');await new TripRepository(fresh.database,x.f.vault.id,randomUUID).restoreTrip(x.ids.trip);
+ assert.deepEqual((await new TagRepository(fresh.database,x.f.vault.id,randomUUID).forTarget({kind:'memory',id:memory})).map(g=>g.id),[a.id]);
+ assert.deepEqual(await readFile(files.uri(x.ids.relative)),x.ids.bytes);
+});
+test('v5 rejects malformed names, duplicate memberships, dangling tags and v4 smuggling before mutation',async t=>{
+ const x=await exported(t);const {TagRepository}=await import('../../.expo/step1-tests/features/tags/repository.js');const tags=new TagRepository(x.f.database,x.f.vault.id,randomUUID);
+ const g=await tags.create('Original');await tags.setAttached({kind:'trip',id:x.ids.trip},g.id,true);
+ const root=join(dirname(x.f.path),'tag-validation');await createPortableExport({database:x.f.database,vaultId:x.f.vault.id,io:x.io,mediaFiles:x.sourceMedia,stagingRoot:root});
+ for(const [path,mutate,expected] of [
+  ['data/tags.json',d=>d.records[0].normalized_name='forged',/normalized/],
+  ['data/trip-tags.json',d=>d.records[0].tag_id=randomUUID(),/Broken reference/],
+  ['data/trip-tags.json',d=>d.records.push({...d.records[0],id:randomUUID()}),/Duplicate tag membership/],
+ ]){await cp(root,x.published,{recursive:true,force:true});await rewriteData(x.io,x.published,path,mutate);await rewriteManifest(x.io,x.published,m=>{if(path.includes('trip-tags'))m.counts.trip_tags=mutate.toString().includes('push')?2:1;});await assert.rejects(inspectPortableRestore(x.io,x.published),expected);}
+ await cp(root,x.published,{recursive:true,force:true});await rewriteManifest(x.io,x.published,m=>{m.format_version=4;m.schema_version=14;});await assert.rejects(inspectPortableRestore(x.io,x.published),/Tags require portable format v5/);
+});
+test('legacy v4 schema 14 restores HEIC data with empty tags',async t=>{
+ const f=await fixture(t),io=new NodeIO(),files=new MediaFiles(join(dirname(f.path),'old-v4')),ids=await seed(f,files,'heic');
+ const root=join(dirname(f.path),'v4-heic');const result=await createPortableExport({database:f.database,vaultId:f.vault.id,io,mediaFiles:files,stagingRoot:root});
+ for(const file of result.manifest.files.filter(f=>f.kind==='data'))await rewriteData(io,root,file.path,d=>d.format_version=4);
+ await rewriteManifest(io,root,m=>{stripTags(m);m.format_version=4;m.schema_version=14;});
+ const fresh=await fixture(t),dest=new MediaFiles(join(dirname(fresh.path),'restored'));
+ await restorePortableArchive({database:fresh.database,currentVaultId:fresh.vault.id,io,archiveRoot:root,destinationMedia:dest,newStagingId:randomUUID});
+ assert.equal((await fresh.connection.getFirstAsync('SELECT count(*) n FROM tags')).n,0);assert.deepEqual(await readFile(dest.uri(ids.relative)),ids.bytes);
 });

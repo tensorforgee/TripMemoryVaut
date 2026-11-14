@@ -177,20 +177,39 @@ async function resolve(connection: SqlConnection, vaultId: string, candidates: C
 export class SearchRepository {
   constructor(private readonly database: LocalDatabase, private readonly vaultId: string) { uuid(vaultId, 'vaultId'); }
 
-  search(input: string, limit = 30): Promise<SearchResult[]> {
+  search(input: string, limit = 30, tagIds: readonly string[] = []): Promise<SearchResult[]> {
     if (!Number.isSafeInteger(limit) || limit < 1 || limit > 30) throw new ValidationError('limit', 'requires 1–30');
-    const parts = queryParts(input); if (!parts) return Promise.resolve([]);
+    const selected=[...new Set(tagIds)]; selected.forEach(id=>uuid(id,'tag.id'));
+    const parts = queryParts(input); if (!parts && (!selected.length || input.trim())) return Promise.resolve([]);
     return this.database.run(async connection => {
-      const rows = await connection.getAllAsync<MatchRow>(`SELECT d.entity_type,d.entity_id,d.trip_id,d.title,d.body,
+      // Canonical joins reflect tag edits immediately; FTS remains a derived text index.
+      const links = `SELECT vault_id,trip_id entity_id,tag_id,deleted_at,'trip' kind FROM trip_tags
+        UNION ALL SELECT vault_id,memory_id,tag_id,deleted_at,'memory' FROM memory_tags`;
+      const filter = selected.length ? ` AND d.entity_type IN ('trip','memory') AND NOT EXISTS (
+        SELECT 1 FROM json_each(?) wanted WHERE NOT EXISTS (
+          SELECT 1 FROM tags g JOIN (${links}) l ON l.tag_id=g.id AND l.vault_id=g.vault_id
+          WHERE g.id=wanted.value AND g.vault_id=d.vault_id AND g.deleted_at IS NULL
+            AND l.deleted_at IS NULL AND l.entity_id=d.entity_id AND l.kind=d.entity_type))` : '';
+      const filterArgs=selected.length ? [JSON.stringify(selected)] : [];
+      const tagged = await connection.getAllAsync<MatchRow>(`SELECT d.entity_type,d.entity_id,d.trip_id,d.title,d.body,2 match_rank,0 relevance
+        FROM search_documents d WHERE d.vault_id=? AND d.entity_type IN ('trip','memory') ${filter}
+        ${parts ? `AND EXISTS(SELECT 1 FROM tags g JOIN (${links}) l ON l.tag_id=g.id AND l.vault_id=g.vault_id
+        WHERE l.entity_id=d.entity_id AND l.kind=d.entity_type AND l.vault_id=d.vault_id
+          AND l.deleted_at IS NULL AND g.deleted_at IS NULL AND (instr(g.normalized_name,?)>0 OR g.id IN (
+            SELECT sd.entity_id FROM search_fts JOIN search_documents sd ON sd.rowid=search_fts.rowid
+            WHERE search_fts MATCH ? AND sd.vault_id=d.vault_id AND sd.entity_type='tag')))` : ''}
+        ORDER BY d.title COLLATE NOCASE,d.entity_type,d.entity_id LIMIT ?`,this.vaultId,...filterArgs,...(parts?[input.normalize('NFKC').trim().replace(/\s+/gu,' ').toLowerCase().replace(/ß/g,'ss').replace(/ς/g,'σ'),parts.match]:[]),documentLimit);
+      const rows = parts ? await connection.getAllAsync<MatchRow>(`SELECT d.entity_type,d.entity_id,d.trip_id,d.title,d.body,
         CASE WHEN lower(trim(d.title))=lower(?) THEN 0
           WHEN d.rowid IN (SELECT rowid FROM search_fts WHERE search_fts MATCH ?) THEN 1 ELSE 2 END match_rank,
         bm25(search_fts,8.0,1.0) relevance
         FROM search_fts JOIN search_documents d ON d.rowid=search_fts.rowid
-        WHERE search_fts MATCH ? AND d.vault_id=?
+        WHERE search_fts MATCH ? AND d.vault_id=? AND d.entity_type<>'tag' ${filter}
         ORDER BY match_rank,relevance,d.title COLLATE NOCASE,d.entity_type,d.entity_id LIMIT ?`,
-      parts.exact, parts.titleMatch, parts.match, this.vaultId, documentLimit);
-      const direct = rows.map(row => ({ ...row, match_rank: row.title.normalize('NFKC').trim().toLowerCase() === parts.exact ? 0 : row.match_rank }));
-      const candidates: Candidate[] = [...direct.map(match => ({ ...match, related: false })), ...await relatedTrips(connection, this.vaultId, direct)];
+      parts.exact, parts.titleMatch, parts.match, this.vaultId, ...filterArgs, documentLimit) : [];
+      const direct = rows.map(row => ({ ...row, match_rank: row.title.normalize('NFKC').trim().toLowerCase() === parts?.exact ? 0 : row.match_rank }));
+      const candidates: Candidate[] = [...direct.map(match => ({ ...match, related: false })), ...tagged.map(match=>({...match,related:false})),
+        ...(selected.length ? [] : await relatedTrips(connection, this.vaultId, direct))];
       candidates.sort(candidateOrder);
       const unique: Candidate[] = []; const seen = new Set<string>();
       for (const candidate of candidates) {
