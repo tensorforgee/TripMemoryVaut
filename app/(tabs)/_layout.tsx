@@ -17,7 +17,7 @@ export default function TabLayout() {
     tabBarLabelPosition: 'below-icon',
     tabBarLabelStyle: { fontSize: 13, fontWeight: '600' },
     tabBarStyle: { backgroundColor: theme.colors.surface, borderTopColor: theme.colors.border,
-      height: Math.max(64, 32 + 22 * fontScale) + insets.bottom },
+      height: Math.max(72, 44 + 28 * fontScale) + insets.bottom },
     tabBarItemStyle: { paddingVertical: 6 },
     tabBarHideOnKeyboard: true,
     animation: 'none',

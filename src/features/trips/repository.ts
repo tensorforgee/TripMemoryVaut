@@ -9,6 +9,8 @@ type TripRow = {
   created_at: string; updated_at: string; deleted_at: string | null;
 };
 
+export type TripOverview = { id: string; photos: number; stops: number; memories: number; cover: string | null };
+
 function fromRow(row: TripRow): Trip {
   if (row.is_favourite !== 0 && row.is_favourite !== 1) throw new Error('Invalid stored favourite flag');
   return parseTrip({
@@ -65,6 +67,24 @@ export class TripRepository {
   getTripById(id: string): Promise<Trip | null> {
     uuid(id, 'trip.id');
     return this.database.run(connection => this.read(connection, id));
+  }
+
+  // One bounded read for the visible page; counts include unassigned content.
+  overview(ids: string[]): Promise<TripOverview[]> {
+    if (ids.length > 100) throw new Error('At most 100 trip overviews per page');
+    ids.forEach(id => uuid(id, 'trip.id'));
+    if (!ids.length) return Promise.resolve([]);
+    return this.database.run(c => c.getAllAsync<TripOverview>(`SELECT t.id,
+      (SELECT count(*) FROM trip_media p JOIN media m ON m.id=p.media_id WHERE p.trip_id=t.id AND p.vault_id=t.vault_id AND p.deleted_at IS NULL AND m.deleted_at IS NULL) AS photos,
+      (SELECT count(*) FROM stops s WHERE s.trip_id=t.id AND s.vault_id=t.vault_id AND s.deleted_at IS NULL) AS stops,
+      (SELECT count(*) FROM memories m WHERE m.trip_id=t.id AND m.vault_id=t.vault_id AND m.deleted_at IS NULL) AS memories,
+      (SELECT d.relative_path FROM trip_media p JOIN media m ON m.id=p.media_id
+        JOIN local_media_files d ON d.media_id=m.id AND d.variant='display' AND d.state='available'
+        JOIN local_media_files o ON o.media_id=m.id AND o.variant='original' AND o.state='available'
+        WHERE p.trip_id=t.id AND p.vault_id=t.vault_id AND p.deleted_at IS NULL AND m.deleted_at IS NULL
+        ORDER BY p.position,p.id LIMIT 1) AS cover
+      FROM trips t JOIN vaults v ON v.id=t.vault_id WHERE t.vault_id=? AND t.deleted_at IS NULL
+      AND v.deleted_at IS NULL AND t.id IN (${ids.map(() => '?').join(',')})`, this.vaultId, ...ids));
   }
 
   listTrips(options: { status?: TripFields['status']; limit?: number; offset?: number } = {}): Promise<Trip[]> {

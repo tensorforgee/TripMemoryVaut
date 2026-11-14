@@ -4,8 +4,9 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { theme } from '../../shared/ui/theme';
 import { openVaultDatabase } from '../../core/database/open';
 import type { TripRepository } from './repository';
+import { mediaService } from '../media/service';
 
-export function useTripQuery<T>(query: (repository: TripRepository) => Promise<T>) {
+export function useTripQuery<T>(query: (repository: TripRepository) => Promise<T>, overview = false) {
   const [data, setData] = useState<T>();
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
@@ -13,6 +14,7 @@ export function useTripQuery<T>(query: (repository: TripRepository) => Promise<T
     let active = true;
     let generation = 0;
     let unsubscribe: (() => void) | undefined;
+    const related: (() => void)[] = [];
     const read = async (repository: TripRepository) => {
       const current = ++generation;
       try { const result = await query(repository); if (active && current === generation) { setData(result); setError(''); } }
@@ -21,10 +23,17 @@ export function useTripQuery<T>(query: (repository: TripRepository) => Promise<T
     openVaultDatabase().then(vault => {
       if (!active) return;
       unsubscribe = vault.trips.subscribe(() => { void read(vault.trips); });
+      if (overview) {
+        const refresh = () => { void read(vault.trips); };
+        related.push(vault.routes.subscribe(refresh), vault.memories.subscribe(refresh));
+        void mediaService().then(service => {
+          if (active) related.push(service.repository.subscribe(refresh));
+        }).catch(e => { if (active) setError(message(e)); });
+      }
       void read(vault.trips);
     }).catch(e => { if (active) setError(message(e)); });
-    return () => { active = false; unsubscribe?.(); };
-  }, [query, retry]));
+    return () => { active = false; unsubscribe?.(); related.forEach(stop => stop()); };
+  }, [query, retry, overview]));
   return { data, error, retry: () => setRetry(value => value + 1) };
 }
 export function message(error: unknown): string { return error instanceof Error ? error.message : String(error); }
