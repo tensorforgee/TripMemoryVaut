@@ -1,3 +1,4 @@
+import TagSection from '../tags/TagSection';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFocusEffect, useLocalSearchParams, useNavigation } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
@@ -121,7 +122,7 @@ export default function MemoriesScreen() {
   useFocusEffect(useCallback(()=>{void load();},[load]));
   const current=memories.find(n=>n.id===selected);
   if(editing)return <Editor tripId={tripId} initial={editing} original={memories.find(n=>n.id===editing.id)} days={days} stops={stops} close={()=>{setEditing(undefined);void load();}}/>;
-  return <ScrollView style={styles.page} contentContainerStyle={styles.content}>
+  return <ScrollView keyboardShouldPersistTaps="handled" style={styles.page} contentContainerStyle={styles.content}>
     <Text style={styles.heading}>Memories</Text>{error?<Problem error={error} retry={()=>void load()}/>:null}
     {!ready ? <Text>Opening memories…</Text> : <>
       {draft ? <><Text style={styles.text}>An unfinished memory draft is saved on this device.</Text><Action title="Resume memory draft" onPress={()=>setEditing(draft)}/></> : <Action title="Create memory" onPress={()=>setEditing(fromMemory())}/>}
@@ -129,6 +130,7 @@ export default function MemoriesScreen() {
         <Action title="All memories" onPress={()=>setSelected(undefined)}/><Text style={styles.section}>{current.title}</Text><Text style={styles.text}>{current.dates?dateLabel(current.dates):'Date unknown'}</Text>
         <Text style={styles.text}>{current.dayId?`Section: ${days.find(d=>d.id===current.dayId)?sectionTitle(days.find(d=>d.id===current.dayId)!):'Unavailable section'}`:current.stopId?`Stop: ${stops.find(s=>s.id===current.stopId)?.place.name ?? 'Unavailable Stop'}`:'Trip memory'}</Text>
         <Text selectable style={styles.text}>{current.body}</Text>
+        <TagSection key={current.id} target={{kind:'memory',id:current.id}} />
         {current.mediaIds.map((id,i)=><Pressable key={id} accessibilityRole="button" accessibilityLabel={`Open attached photo ${i+1}`} onPress={()=>setViewer(id)}><Photo id={id}/></Pressable>)}
         <Action title="Edit memory" disabled={!!draft||busy} onPress={()=>setEditing(fromMemory(current))}/>
         <Action title="Remove memory" disabled={busy} onPress={()=>Alert.alert(`Remove “${current.title}”?`,'The written memory will be removed. Its source photos and other uses will be kept.',[{text:'Cancel',style:'cancel'},{text:'Remove memory',style:'destructive',onPress:()=>{setBusy(true);void openVaultDatabase().then(v=>v.memories.remove(tripId,current.id)).then(()=>{setSelected(undefined);return load();}).catch(e=>setError(message(e))).finally(()=>setBusy(false));}}])}/>

@@ -246,7 +246,7 @@ test('schema 10 upgrades through current schema without changing original Stops/
   const before=await routes.listStops(trip.id),history=await f.connection.getAllAsync('SELECT * FROM schema_migrations ORDER BY version');
   await migrateDatabase(f.database,f.services);assert.deepEqual(await routes.listStops(trip.id),before);
   assert.deepEqual((await f.connection.getAllAsync('SELECT * FROM schema_migrations ORDER BY version')).slice(0,10),history);
-  assert.equal((await f.connection.getFirstAsync('PRAGMA user_version')).user_version,14);
+  assert.equal((await f.connection.getFirstAsync('PRAGMA user_version')).user_version,15);
   assert.equal((await f.connection.getFirstAsync('SELECT count(*) n FROM road_route_segments')).n,0);
   await migrateDatabase(f.database,f.services);assert.deepEqual(await routes.listStops(trip.id),before);
 });
@@ -295,7 +295,7 @@ async function manifestWrite(io,manifest) {
 
 test('portable v3 preserves road geometry/vias/provenance and roundtrips into isolated host SQLite',async t=>{
   const x=await seed(t),p={...proposal(x.i),viaPoints:[{id:randomUUID(),coordinate:[77.013,31.013]}]};await x.roads.confirm(x.trip.id,p,null);
-  const io=await archive(x),inspection=await inspectPortableRestore(io,'archive');assert.equal(inspection.manifest.format_version,4);
+  const io=await archive(x),inspection=await inspectPortableRestore(io,'archive');assert.equal(inspection.manifest.format_version,5);
   assert.equal(inspection.manifest.counts.road_route_segments,1);
   const geo=JSON.parse(await io.readText('archive','routes/routes.geojson')).features.find(f=>f.properties.kind==='generated_road');
   assert.deepEqual(geo.geometry,p.geometry);assert.equal(geo.properties.provenance.license,ORS_LICENSE);
@@ -315,6 +315,7 @@ test('portable inspection refuses malformed geometry, license loss, stale unmark
 
 test('portable v1 remains readable, but cannot smuggle road records into an old format',async t=>{
   const x=await seed(t),io=await archive(x),m=JSON.parse(await io.readText('archive','manifest.json'));
+  for(const key of ['tags','trip_tags','memory_tags'])delete m.counts[key];m.files=m.files.filter(f=>!['data/tags.json','data/trip-tags.json','data/memory-tags.json'].includes(f.path));
   m.format_version=1;m.schema_version=10;delete m.counts.road_route_segments;delete m.counts.photo_memory_pins;delete m.counts.memories;delete m.counts.memory_media;m.files=m.files.filter(f=>!['data/memories.json','data/memory-media.json'].includes(f.path)).filter(f=>f.path!=='data/road-route-segments.json' && f.path!=='data/photo-memory-pins.json');
   for(const f of m.files.filter(f=>f.kind==='data')) {const d=JSON.parse(await io.readText('archive',f.path));d.format_version=1;const text=JSON.stringify(d);await io.writeText('archive',f.path,text);f.bytes=Buffer.byteLength(text);f.sha256=await io.sha256Text(text);}
   await manifestWrite(io,m);assert.equal((await inspectPortableRestore(io,'archive')).manifest.format_version,1);

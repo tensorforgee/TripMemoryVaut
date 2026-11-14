@@ -11,6 +11,7 @@
   },
   "include": [
     "src/domain/**/*.ts",
+    "src/features/tags/repository.ts",
     "src/features/memories/repository.ts",
     "src/core/database/database.ts",
     "src/core/database/migrate.ts",
