@@ -5,7 +5,7 @@ import { FlatList, Pressable, Text, TextInput, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { openVaultDatabase } from '../../core/database/open';
 import type { SearchResult } from './repository';
-import { message, styles } from '../trips/ui';
+import { LoadingState, message, styles } from '../trips/ui';
 
 const labels: Record<SearchResult['entityType'], string> = {
   trip: 'Trip', place: 'Place', stop: 'Stop note', tripDay: 'Trip section', companion: 'Companion',
@@ -34,7 +34,7 @@ export default function SearchScreen() {
   const empty = query.trim() || tagIds.length ? (loading ? 'Searching this device…' : 'No matching memories.')
     : 'Search trips, places, people, chapters and dreams';
   return <SafeAreaView style={styles.page} edges={['bottom', 'left', 'right']}>
-    <FlatList keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content} data={results}
+    <FlatList keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" contentContainerStyle={styles.content} data={results}
       keyExtractor={item => `${item.entityType}:${item.entityId}`}
       ListHeaderComponent={<View style={{ gap: 12 }}>
         <Text style={styles.heading}>Search your memories</Text>
@@ -43,9 +43,10 @@ export default function SearchScreen() {
           value={query} onChangeText={setQuery} />
         <Text style={styles.text}>Private, offline search of confirmed archive content.</Text>
         <TagSection selected={tagIds} onChange={setTagIds} onUpdated={()=>setRevision(n=>n+1)}/>
+        {loading ? <LoadingState label="Searching this device…" /> : null}
         {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
       </View>}
-      ListEmptyComponent={<View style={styles.card}><Text style={styles.text}>{empty}</Text></View>}
+      ListEmptyComponent={!loading && !error ? <View style={styles.card}><Text style={styles.text}>{empty}</Text></View> : null}
       renderItem={({ item }) => <Pressable accessibilityRole="button" accessibilityLabel={`${labels[item.entityType]}: ${item.primaryTitle}`}
         style={styles.card} onPress={() => router.push(item.navigationTarget as never)}>
         <View style={styles.row}><Text style={{ color: '#49647d', fontWeight: '700' }}>{labels[item.entityType]}</Text>

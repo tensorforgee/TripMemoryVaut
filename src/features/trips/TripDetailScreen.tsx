@@ -2,6 +2,7 @@ import TagSection from '../tags/TagSection';
 import { useCallback, useState } from 'react';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Alert, ScrollView, Text } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { openVaultDatabase } from '../../core/database/open';
 import type { TripRepository } from './repository';
 import { dateLabel } from './presentation';
@@ -23,7 +24,7 @@ export default function TripDetailScreen() {
     catch (e) { setError(message(e)); setBusy(false); }
   }
   const trip = result.data;
-  return <ScrollView keyboardShouldPersistTaps="handled" style={styles.page} contentContainerStyle={styles.content}>
+  return <SafeAreaView style={styles.page} edges={['bottom', 'left', 'right']}><ScrollView keyboardShouldPersistTaps="handled" style={styles.page} contentContainerStyle={styles.content}>
     {result.error ? <Problem error={result.error} retry={result.retry} /> : trip === undefined ? <Text>Loading trip…</Text> : !trip ? <Text>Trip unavailable. It may be in Trash.</Text> : <>
       <Text style={styles.heading}>{trip.title}</Text><Text style={styles.text}>{dateLabel(trip.dates)}</Text>
       <Text style={styles.text}>{trip.isFavourite ? '★ Favourite' : 'Not a favourite'} · {trip.status === 'draft' ? 'Draft' : 'Saved'}</Text>
@@ -44,5 +45,5 @@ export default function TripDetailScreen() {
       ])} />
     </>}
     {error ? <Problem error={error} /> : null}
-  </ScrollView>;
+  </ScrollView></SafeAreaView>;
 }

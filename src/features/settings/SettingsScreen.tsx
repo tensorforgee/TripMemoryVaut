@@ -46,7 +46,7 @@ export default function SettingsScreen(){
     ]);
   const appVersion=Constants.expoConfig?.version??settingsVersions.appVersion;
   const build=Constants.nativeBuildVersion??Constants.expoConfig?.android?.versionCode?.toString();
-  return <SafeAreaView style={styles.page} edges={['bottom','left','right']}><ScrollView contentContainerStyle={styles.content}>
+  return <SafeAreaView style={styles.page} edges={['bottom','left','right']}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
     <Text style={styles.heading}>Settings</Text><Text style={styles.text}>Understand and safely maintain this local Trip Memory Vault.</Text>
 
     <Section title="Routing">
@@ -55,6 +55,7 @@ export default function SettingsScreen(){
     </Section>
 
     <Section title="Archive">
+      <Action title="Trash" secondary disabled={!!busy} onPress={()=>router.push('/trips/trash')}/>
       <Text style={styles.text}>Export creates a portable backup with canonical data and app-owned original photos.</Text>
       <Action title="Export vault" disabled={!!busy} onPress={()=>router.push('/archive')}/>
       <Text style={styles.text}>Restore requires a compatible Trip Memory Vault archive and an empty local vault.</Text>

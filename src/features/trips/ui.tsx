@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useFocusEffect } from 'expo-router';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { theme } from '../../shared/ui/theme';
 import { openVaultDatabase } from '../../core/database/open';
 import type { TripRepository } from './repository';
 
@@ -27,20 +28,29 @@ export function useTripQuery<T>(query: (repository: TripRepository) => Promise<T
   return { data, error, retry: () => setRetry(value => value + 1) };
 }
 export function message(error: unknown): string { return error instanceof Error ? error.message : String(error); }
-export function Action({ title, onPress, disabled = false }: { title: string; onPress: () => void; disabled?: boolean }) {
+export function Action({ title, onPress, disabled = false, secondary = false }: { title: string; onPress: () => void; disabled?: boolean; secondary?: boolean }) {
   return <Pressable accessibilityRole="button" accessibilityState={{ disabled }} disabled={disabled} onPress={onPress}
-    style={[styles.button, disabled && { opacity: 0.5 }]}><Text style={styles.buttonText}>{title}</Text></Pressable>;
+    style={({ pressed }) => [styles.button, secondary && { backgroundColor: theme.colors.selected }, (disabled || pressed) && { opacity: 0.6 }]}>
+    <Text style={[styles.buttonText, secondary && { color: theme.colors.primary }]}>{title}</Text></Pressable>;
+}
+export function LoadingState({ label }: { label: string }) {
+  return <View accessibilityLiveRegion="polite" style={{ flexDirection: 'row', alignItems: 'center', gap: theme.space.medium, paddingVertical: theme.space.large }}>
+    <ActivityIndicator color={theme.colors.primary} /><Text style={[styles.text, { flex: 1 }]}>{label}</Text>
+  </View>;
+}
+export function EmptyState({ title, detail }: { title: string; detail: string }) {
+  return <View style={styles.card}><Text accessibilityRole="header" style={styles.section}>{title}</Text><Text style={styles.text}>{detail}</Text></View>;
 }
 export function Problem({ error, retry }: { error: string; retry?: () => void }) {
   return <View><Text accessibilityRole="alert" style={styles.error}>{error}</Text>{retry && <Action title="Retry" onPress={retry} />}</View>;
 }
 export const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#f7f8fa' }, content: { padding: 20, gap: 16, paddingBottom: 48 },
-  heading: { fontSize: 26, fontWeight: '700', color: '#17283b' }, section: { fontSize: 20, fontWeight: '600', paddingVertical: 12 },
-  text: { fontSize: 16, color: '#34465a', lineHeight: 24 }, card: { padding: 16, backgroundColor: '#fff', borderRadius: 10, gap: 8, marginBottom: 10 },
-  button: { minHeight: 48, padding: 12, backgroundColor: '#183e63', borderRadius: 8, justifyContent: 'center', marginVertical: 4 },
-  buttonText: { color: '#fff', fontSize: 16, textAlign: 'center', fontWeight: '600' },
-  input: { borderWidth: 1, borderColor: '#8d9aaa', borderRadius: 6, backgroundColor: '#fff', padding: 12, fontSize: 16, minHeight: 48, color: '#17283b' },
+  page: { flex: 1, backgroundColor: theme.colors.background }, content: { padding: theme.space.page, gap: theme.space.large, paddingBottom: 48 },
+  heading: { fontSize: 26, fontWeight: '700', color: theme.colors.ink }, section: { fontSize: 20, fontWeight: '600', color: theme.colors.ink, paddingVertical: 12 },
+  text: { fontSize: 16, color: theme.colors.text, lineHeight: 24 }, card: { padding: theme.space.large, backgroundColor: theme.colors.surface, borderRadius: theme.radius.card, borderWidth: StyleSheet.hairlineWidth, borderColor: theme.colors.border, gap: theme.space.small, marginBottom: 10 },
+  button: { minHeight: 48, padding: theme.space.medium, backgroundColor: theme.colors.primary, borderRadius: theme.radius.control, justifyContent: 'center', marginVertical: 4 },
+  buttonText: { color: theme.colors.surface, fontSize: 16, textAlign: 'center', fontWeight: '600' },
+  input: { borderWidth: 1, borderColor: '#8d9aaa', borderRadius: theme.radius.control, backgroundColor: theme.colors.surface, padding: theme.space.medium, fontSize: 16, minHeight: 48, color: theme.colors.ink },
   row: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
-  error: { color: '#a12626', paddingVertical: 12, fontSize: 16 },
+  error: { color: theme.colors.error, paddingVertical: 12, fontSize: 16 },
 });

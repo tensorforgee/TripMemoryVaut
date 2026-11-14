@@ -3,7 +3,7 @@ import { router } from 'expo-router';
 import { SectionList, Text, View, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { dateLabel, tripSections } from './presentation';
-import { Action, Problem, styles, useTripQuery } from './ui';
+import { Action, LoadingState, Problem, styles, useTripQuery } from './ui';
 import type { TripRepository } from './repository';
 
 export default function TripsScreen() {
@@ -14,21 +14,13 @@ export default function TripsScreen() {
     return rows;
   }, [pages]);
   const result = useTripQuery(query);
-  return <SafeAreaView style={styles.page} edges={['bottom', 'left', 'right']}>
+  return <SafeAreaView style={styles.page} edges={['left', 'right']}>
     <SectionList contentContainerStyle={styles.content} sections={tripSections(result.data ?? [])} keyExtractor={trip => trip.id}
       ListHeaderComponent={<View style={{ gap: 12 }}><Text style={styles.heading}>Your trips</Text>
+        <Text style={styles.text}>Revisit your travels or pick up a draft. Unknown dates can stay unknown.</Text>
         <Action title="Create trip" onPress={() => router.push('/trips/new')} />
-        <Action title="Search your memories" onPress={() => router.push('/search')} />
-        <Action title="My Map" onPress={() => router.push('/map')} />
-        <Action title="My Travel Life" onPress={() => router.push('/life')} />
-        <Action title="Dream Places" onPress={() => router.push('/dreams')} />
-        <Action title="Archive & restore" onPress={() => router.push('/archive')} />
-        {__DEV__ ? <Action title="Step 12 verification" onPress={() => router.push('/archive-test')} /> : null}
-        {__DEV__ ? <Action title="Step 13 verification" onPress={() => router.push('/search-test')} /> : null}
-        <View style={{ flexDirection: 'row', gap: 8 }}><View style={{ flex: 1 }}><Action title="Companions" onPress={() => router.push('/companions')} /></View>
-          <View style={{ flex: 1 }}><Action title="Life Chapters" onPress={() => router.push('/chapters')} /></View></View>
-        <Action title="Trash" onPress={() => router.push('/trips/trash')} />
-        {result.error ? <Problem error={result.error} retry={result.retry} /> : !result.data ? <Text>Loading trips…</Text> : null}
+        <Action title="Search your memories" secondary onPress={() => router.push('/search')} />
+        {result.error ? <Problem error={result.error} retry={result.retry} /> : !result.data ? <LoadingState label="Loading trips…" /> : null}
       </View>}
       ListEmptyComponent={result.data && !result.error ? <View style={styles.card}><Text style={styles.heading}>No trips yet</Text>
         <Text style={styles.text}>A title is enough. Dates can stay unknown.</Text>
@@ -36,7 +28,7 @@ export default function TripsScreen() {
       renderSectionHeader={({ section }) => <Text style={styles.section}>{section.title}</Text>}
       renderItem={({ item }) => <Pressable accessibilityRole="button" onPress={() => router.push(`/trips/${item.id}`)} style={styles.card}>
         <Text style={styles.section}>{item.title}</Text><Text style={styles.text}>{dateLabel(item.dates)}</Text>
-        <Text>{item.isFavourite ? '★ Favourite' : 'Not a favourite'}</Text>
+        <Text style={styles.text}>{item.isFavourite ? '★ Favourite' : 'Not a favourite'}</Text>
       </Pressable>}
       ListFooterComponent={result.data?.length === pages * 100 ? <Action title="Load more trips" onPress={() => setPages(p => p + 1)} /> : null} />
   </SafeAreaView>;
