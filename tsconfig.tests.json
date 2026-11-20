@@ -22,6 +22,7 @@
     "src/features/route/repository.ts",
     "src/features/route/forms.ts",
     "src/features/map/model.ts",
+    "src/features/map/lifetime-map.ts",
     "src/features/map/photo-memory-model.ts",
     "src/features/map/photo-memory-repository.ts",
     "src/features/road-route/model.ts",

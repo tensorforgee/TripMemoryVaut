@@ -1,13 +1,14 @@
 import { Component, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { router, useLocalSearchParams, useNavigation } from 'expo-router';
+import { router, useFocusEffect, useLocalSearchParams, useNavigation } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
-import { Alert, AppState, FlatList, Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, AppState, BackHandler, FlatList, Linking, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { Camera, GeoJSONSource, Images, Layer, Map, Marker, type CameraRef } from '@maplibre/maplibre-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Image } from 'expo-image';
 import { offlineStyle } from '../../core/maps/offline-style';
-import { Problem } from '../trips/ui';
+import { Action, LoadingState, Problem } from '../trips/ui';
+import { theme } from '../../shared/ui/theme';
 import { buildTripMap, fitTripCamera } from './model';
 import { roadDisplay, roadFeatures, roadSegments, STOPS_ONLY_LABEL, type RoadProposal } from '../road-route/model';
 import { RoadRouteEditor } from '../road-route/RoadRouteEditor';
@@ -28,10 +29,7 @@ const basemapHeaders = { 'Cache-Control': 'no-cache', 'User-Agent': 'com.tripmem
 const fallback = basemapPresentation('unavailable');
 
 function Button({ title, onPress, primary = false }: { title: string; onPress: () => void; primary?: boolean }) {
-  return <Pressable accessibilityRole="button" onPress={onPress}
-    style={({ pressed }) => [s.button, primary && s.primaryButton, pressed && { opacity: 0.72 }]}>
-    <Text style={[s.buttonText, primary && { color: '#fff' }]}>{title}</Text>
-  </Pressable>;
+  return <Action title={title} onPress={onPress} secondary={!primary} />;
 }
 
 class MapBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
@@ -174,14 +172,9 @@ function TripCanvas({ model, selected, select, fitRequest, roads, previews, appr
         </Marker>}
         <PhotoMemoryMarkers pins={pins} select={selectPin} />
       </Map>}
-    <View style={s.mapStatus} pointerEvents="box-none">
+    {state !== 'online' && <View style={s.mapStatus} pointerEvents="box-none">
       <View style={s.statusPill}><Text style={s.statusText} accessibilityLiveRegion="polite">{status.label}</Text></View>
       {(state === 'offline' || state === 'unavailable') && styleUrl ? <Button title="Retry basemap" onPress={retry} /> : null}
-    </View>
-    {!model.mapped.length && !pins.length && <View style={s.noStops} pointerEvents="none">
-      <Text style={s.title}>Your map starts with a place</Text>
-      <Text style={s.body}>{model.route.length ? 'These stops have no confirmed, usable coordinates yet. Your route is saved below.'
-        : 'Add stops through Route when you are ready. Unknown places and dates can stay unknown.'}</Text>
     </View>}
     {local && <View style={s.offlineNote} pointerEvents="none"><Text style={s.statusText}>Natural Earth · coarse overview, no road tiles</Text></View>}
     {isMapTiler && !local && state !== 'unavailable' && <View style={s.mapCredits}>
@@ -207,6 +200,8 @@ export default function TripMapScreen() {
   const [expanded, setExpanded] = useState(false);
   const [showStops, setShowStops] = useState(false);
   const [height, setHeight] = useState(700);
+  const { fontScale } = useWindowDimensions();
+  const panelHeight = Math.min(height * (fontScale > 1.2 ? 0.19 : 0.3), 280);
   const [fitRequest, setFitRequest] = useState(0);
   const [showRoads, setShowRoads] = useState(false);
   const [previews, setPreviews] = useState<RoadProposal[]>([]);
@@ -224,6 +219,14 @@ export default function TripMapScreen() {
   });
   const select = (id: string) => { setSelected(id); setExpanded(true); setShowStops(false); setShowRoads(false); };
   const fitTrip = () => { setSelected(undefined); setExpanded(false); setShowStops(false); setShowRoads(false); setFitRequest(v => v + 1); };
+  useFocusEffect(useCallback(() => {
+    const back = BackHandler.addEventListener('hardwareBackPress', () => {
+      if (showRoads) { setShowRoads(false); return true; }
+      if (expanded) { setExpanded(false); setShowStops(false); return true; }
+      return false;
+    });
+    return () => back.remove();
+  }, [showRoads, expanded]));
   useEffect(() => { setSelected(undefined); setExpanded(false); setShowStops(false); setShowRoads(false); setPreviews([]); setRoadDirty(false); }, [tripId]);
   useEffect(() => { setPinDraft(null); setSelectedPin(null); }, [tripId]);
   const item = model.route.find(stop => stop.stop.id === selected);
@@ -234,20 +237,17 @@ export default function TripMapScreen() {
     onLayout={event => setHeight(event.nativeEvent.layout.height)}>
     <StatusBar style="dark" />
     {result.error ? <View style={s.empty}><Button title="‹ Back to trip" onPress={() => router.back()} /><Problem error={result.error} retry={result.retry} /></View>
-      : !summary || !result.data ? <View style={s.empty}><Text style={s.body}>Opening your local trip…</Text></View> : <>
+      : !summary || !result.data ? <View style={s.empty}><LoadingState label="Opening your local trip…" /></View> : <>
         <View style={s.header}>
           <Pressable accessibilityRole="button" accessibilityLabel="Back to trip" onPress={() => router.back()} style={s.back}>
             <Text style={s.backText}>‹</Text>
           </Pressable>
-          <View style={s.headingBlock}><Text style={s.eyebrow}>TRIP MEMORY VAULT / MAP</Text>
-            <Text style={s.title} numberOfLines={1}>{summary.title}</Text>
+          <View style={s.headingBlock}><Text style={s.eyebrow}>TRIP MAP</Text>
+            <Text accessibilityRole="header" accessibilityLabel={summary.title} style={s.title} numberOfLines={1}>{summary.title}</Text>
             <Text style={s.routeSummary} numberOfLines={1}>{summary.route || 'A journey waiting for its first stop'}</Text>
           </View>
         </View>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.chipStrip} contentContainerStyle={s.chips}>
-          {summary.chips.map(chip => <View key={chip} style={s.chip}><Text style={s.chipText}>{chip}</Text></View>)}
-        </ScrollView>
-        <View style={s.actions}>
+        <View style={s.generate}>
           <Button title={showRoads ? 'Hide road review' : display.previews.length ? 'Review road preview' : 'Generate road route'} primary
             onPress={() => { setShowRoads(v => !v); setSelected(undefined); setExpanded(false); }} />
         </View>
@@ -255,27 +255,31 @@ export default function TripMapScreen() {
           <MapBoundary key={tripId}><TripCanvas model={model} selected={selected} select={select} fitRequest={fitRequest} roads={roads} previews={display.previews} approximate={display.approximate}
             pins={result.data.pins} selectPin={pin => { if (!pinDraft?.moving) setSelectedPin(pin); }}
             longPress={point => { try { setPinDraft(longPressPin(point,pinDraft)); setSelectedPin(null); } catch { /* ignore invalid native coordinates */ } }} /></MapBoundary>
-          {(model.mapped.length > 0 || result.data.pins.length > 0) && <View style={s.fit}><Button title="⌖ Fit trip" onPress={fitTrip} /></View>}
         </View>
-        <PhotoMemoryEditor tripId={tripId} draft={pinDraft} setDraft={setPinDraft} selected={selectedPin} setSelected={setSelectedPin} pins={result.data.pins} />
         <View style={s.sheet}>
-          <Pressable accessibilityRole="button" accessibilityState={{ expanded }} accessibilityLabel={expanded ? 'Collapse trip panel' : 'Expand trip panel'}
-            onPress={() => { setShowRoads(false); setExpanded(v => !v); }} style={s.sheetHeading}>
+          <Pressable accessibilityRole="button" accessibilityState={{ expanded: expanded || showRoads }} accessibilityLabel={expanded || showRoads ? 'Collapse trip panel' : 'Expand trip panel'}
+            onPress={() => { setShowRoads(false); setExpanded(showRoads ? false : !expanded); }} style={s.sheetHeading}>
             <View style={s.handle} />
-            <Text style={s.sheetTitle} numberOfLines={1}>{detail?.name ?? summary.title}</Text>
+            <Text style={s.sheetTitle} numberOfLines={1}>{showRoads ? 'Road review · not saved' : detail?.name ?? 'Stops & memories'}</Text>
             <Text style={s.muted}>{detail ? `${stopRole(item!, model.route.length)} ${detail.order} · ${detail.kind} · ${detail.photoCount} associated ${detail.photoCount === 1 ? 'photo' : 'photos'}`
-              : `${summary.mappedLabel} · ${summary.photoLabel}`} {expanded ? '⌄' : '⌃'}</Text>
+              : `${summary.mappedLabel} · ${summary.photoLabel}`} {expanded || showRoads ? '⌄' : '⌃'}</Text>
           </Pressable>
+          <ScrollView horizontal showsHorizontalScrollIndicator contentContainerStyle={s.actions} style={{ flexGrow: 0 }}>
+            <Button title="Fit trip" onPress={fitTrip} />
+            <Button title={showStops && expanded ? 'Hide stops' : 'Stops'} onPress={() => { setShowRoads(false); setShowStops(true); setExpanded(!(showStops && expanded)); }} />
+            <PhotoMemoryEditor compact tripId={tripId} draft={pinDraft} setDraft={setPinDraft} selected={selectedPin} setSelected={setSelectedPin} pins={result.data.pins} />
+          </ScrollView>
           {/* Panel visibility must not own the lifetime of temporary road proposals. */}
-          <View style={{display:showRoads ? 'flex' : 'none',height:Math.min(height*0.36,300)}}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.panelContent}>
+          <View style={{display:showRoads ? 'flex' : 'none',height:panelHeight}}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={s.panelContent}>
             <RoadRouteEditor key={JSON.stringify([tripId,segments])} tripId={tripId} segments={segments} saved={result.data.roads}
               labels={Object.fromEntries(model.route.map(item => [item.stop.id,`${item.order}. ${item.stop.place.name}`]))}
               onPreview={onPreview} onDirty={onDirty} />
           </ScrollView></View>
-          {expanded && !showRoads && <View style={{ height: Math.min(height * 0.28, 240) }}>
+          {expanded && !showRoads && <View style={{ height: panelHeight }}>
             {showStops || !detail ? <FlatList data={model.route} keyExtractor={stop => stop.stop.id}
-              contentContainerStyle={s.panelContent} ListEmptyComponent={<Text style={s.body}>No stops added yet. Open Route to add your first place.</Text>}
-              ListHeaderComponent={<Text style={s.muted}>Every visit stays separate, including repeated places.</Text>}
+              contentContainerStyle={s.panelContent} ListEmptyComponent={<Text style={s.body}>Your map starts with a place. Use Edit stops to add a place; unknown dates and locations can stay unknown.</Text>}
+              ListHeaderComponent={<><Text style={s.body}>{summary.title}</Text><Text style={s.muted}>{summary.route}</Text><Text style={s.muted}>{summary.chips.join(' · ')}</Text><Text style={s.muted}>Numbered stops · amber dots mark stays. Photo thumbnails are manually placed memories.</Text></>}
+              ListFooterComponent={<View style={s.wrap}><Button title="Edit stops" onPress={() => router.push(`/trips/${tripId}/route`)} /><Button title="Timeline" onPress={() => router.push(`/trips/${tripId}/timeline`)} /><Button title="Trip photos" onPress={() => router.push(`/trips/${tripId}/photos`)} /></View>}
               renderItem={({ item: stop }) => <Pressable accessibilityRole="button" accessibilityState={{ selected: stop.stop.id === selected }}
                 accessibilityLabel={`Stop ${stop.order}: ${stop.stop.place.name}, ${stop.stop.kind}`}
                 onPress={() => select(stop.stop.id)} style={s.stopRow}>
@@ -292,15 +296,13 @@ export default function TripMapScreen() {
                 {overlaps.length > 1 && <><Text style={s.sectionLabel}>Visits at this location</Text>
                   <View style={s.wrap}>{overlaps.map(stop => <Button key={stop.stop.id} title={`${stop.order === detail.order ? '✓ ' : ''}Stop ${stop.order} · ${stop.stop.kind}`} onPress={() => select(stop.stop.id)} />)}</View></>}
                 <Button title="Edit place" onPress={() => router.push({ pathname: '/trips/[tripId]/route', params: { tripId, editPlaceId: item!.stop.placeId } })} />
+                <Button title="Trip photos" onPress={() => router.push(`/trips/${tripId}/photos`)} />
+                <Button title="Timeline" onPress={() => router.push(`/trips/${tripId}/timeline`)} />
                 <Text style={s.muted}>Photos opens this trip’s gallery. Photos without a stop remain part of the trip.</Text>
               </ScrollView>}
           </View>}
-          <View style={s.actions}><Button title="Edit Stops" onPress={() => router.push(`/trips/${tripId}/route`)} />
-            <Button title="Timeline" onPress={() => router.push(`/trips/${tripId}/timeline`)} />
-            <Button title="Photos" onPress={() => router.push(`/trips/${tripId}/photos`)} />
-            <Button title="Stops" onPress={() => { setShowRoads(false); setShowStops(true); setExpanded(true); }} /></View>
-          <Text style={s.legend}>{display.covered ? `Blue: ${display.covered}/${display.total} road segments · ${display.previews.length ? 'temporary preview, not saved' : 'saved suggestion'} · historical road unverified` : STOPS_ONLY_LABEL}
-            {display.approximate.features.length ? ' · Dashed: approximate Stop connections' : ''}
+          <Text style={s.legend}>{display.covered ? `${display.previews.length} unsaved preview · ${roads.length} confirmed suggestion${roads.length === 1 ? '' : 's'} · historical road unverified` : STOPS_ONLY_LABEL}
+            {display.approximate.features.length ? ' · Dashed = approximate' : ''}
             {model.unknownCount + model.unconfirmedCount > 0 ? ' · gaps preserved' : ''}</Text>
           {(roads.length > 0 || previews.length > 0) && <Pressable accessibilityRole="link" onPress={() => { void Linking.openURL('https://account.heigit.org/info/tos'); }}>
             <Text style={s.legend}>© openrouteservice by HeiGIT | Data from OpenStreetMap · CC-BY-SA 4.0</Text>
@@ -311,48 +313,40 @@ export default function TripMapScreen() {
 }
 
 const s = StyleSheet.create({
-  page: { flex: 1, backgroundColor: '#faf8f2' },
+  generate: { paddingHorizontal: 16, paddingBottom: 4 },
+  page: { flex: 1, backgroundColor: theme.colors.background },
   header: { flexDirection: 'row', paddingRight: 18, paddingTop: 6, gap: 6, alignItems: 'center' },
   back: { width: 48, minHeight: 60, alignItems: 'center', justifyContent: 'center' },
-  backText: { fontSize: 40, color: '#235c64' },
+  backText: { fontSize: 40, color: theme.colors.primary },
   headingBlock: { flex: 1, gap: 3 },
-  eyebrow: { color: '#6c766f', fontSize: 10, fontWeight: '700', letterSpacing: 1.5 },
-  title: { color: '#213b3d', fontSize: 22, fontWeight: '700' },
-  routeSummary: { color: '#596a67', fontSize: 13 },
-  chipStrip: { flexGrow: 0, maxHeight: 48 },
-  chips: { paddingHorizontal: 18, paddingVertical: 10, gap: 8 },
-  chip: { backgroundColor: '#ecefe6', paddingVertical: 4, paddingHorizontal: 10, borderRadius: 8 },
-  chipText: { color: '#315c5b', fontSize: 12, fontWeight: '600' },
-  mapArea: { flex: 1, minHeight: 120 },
+  eyebrow: { color: '#6c766f', fontSize: 11, fontWeight: '700', letterSpacing: 1 },
+  title: { color: theme.colors.ink, fontSize: 22, fontWeight: '700' },
+  routeSummary: { color: theme.colors.muted, fontSize: 13 },
+  mapArea: { flex: 1, minHeight: 160 },
   canvas: { flex: 1, backgroundColor: '#e6eef3' },
   empty: { flex: 1, padding: 24, gap: 16, justifyContent: 'center' },
-  body: { color: '#354b4a', fontSize: 14, lineHeight: 21 },
+  body: { color: theme.colors.text, fontSize: 14, lineHeight: 21 },
   mapStatus: { position: 'absolute', top: 10, left: 12, right: 60, alignItems: 'flex-start', gap: 5 },
   statusPill: { backgroundColor: '#faf8f2ee', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
-  statusText: { color: '#465f5c', fontSize: 11, fontWeight: '600' },
+  statusText: { color: theme.colors.text, fontSize: 11, fontWeight: '600' },
   offlineNote: { position: 'absolute', bottom: 32, left: 12, backgroundColor: '#faf8f2ee', borderRadius: 6, padding: 5 },
   mapCredits: { position: 'absolute', bottom: 5, left: 8, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#ffffffed', borderRadius: 4, padding: 4 },
-  creditText: { color: '#354b4a', fontSize: 9, lineHeight: 12 },
-  noStops: { position: 'absolute', top: '30%', left: 24, right: 24, backgroundColor: '#faf8f2ee', padding: 18, borderRadius: 16, gap: 8 },
-  fit: { position: 'absolute', bottom: 12, right: 12, elevation: 4, borderRadius: 14 },
-  button: { minHeight: 44, paddingHorizontal: 13, paddingVertical: 10, backgroundColor: '#f3f1e9', borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  primaryButton: { backgroundColor: '#146775' },
-  buttonText: { color: '#235c64', fontSize: 13, fontWeight: '700' },
-  sheet: { backgroundColor: '#faf8f2', borderTopLeftRadius: 22, borderTopRightRadius: 22, borderTopWidth: 1, borderColor: '#dfe4dc', elevation: 7 },
-  sheetHeading: { minHeight: 70, paddingHorizontal: 18, paddingBottom: 8, gap: 4 },
+  creditText: { color: theme.colors.text, fontSize: 9, lineHeight: 12 },
+  sheet: { backgroundColor: theme.colors.surface, borderTopLeftRadius: 16, borderTopRightRadius: 16, borderTopWidth: 1, borderColor: theme.colors.border, elevation: 7 },
+  sheetHeading: { minHeight: 64, paddingHorizontal: 18, paddingBottom: 8, gap: 4 },
   handle: { width: 34, height: 4, borderRadius: 2, backgroundColor: '#c9d2ca', alignSelf: 'center', marginTop: 8, marginBottom: 4 },
-  sheetTitle: { fontSize: 18, color: '#213b3d', fontWeight: '700' },
-  muted: { fontSize: 12, color: '#64736e', lineHeight: 18 },
-  actions: { flexDirection: 'row', gap: 7, paddingHorizontal: 16, paddingVertical: 7, flexWrap: 'wrap' },
-  legend: { color: '#64736e', fontSize: 10, paddingHorizontal: 18, paddingBottom: 9 },
+  sheetTitle: { fontSize: 18, color: theme.colors.ink, fontWeight: '700' },
+  muted: { fontSize: 14, color: theme.colors.muted, lineHeight: 21 },
+  actions: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 0, alignItems: 'center' },
+  legend: { color: theme.colors.muted, fontSize: 12, paddingHorizontal: 16, paddingVertical: 6 },
   panelContent: { paddingHorizontal: 18, paddingVertical: 8, gap: 10 },
-  stopRow: { flexDirection: 'row', minHeight: 56, alignItems: 'center', gap: 12, borderBottomWidth: 1, borderColor: '#e4e6dd', paddingBottom: 8 },
-  stopName: { fontSize: 15, fontWeight: '600', color: '#213b3d' },
-  listNumber: { minWidth: 32, height: 32, borderRadius: 16, paddingHorizontal: 7, justifyContent: 'center' },
+  stopRow: { flexDirection: 'row', minHeight: 56, alignItems: 'center', gap: 12, borderBottomWidth: 1, borderColor: theme.colors.border, paddingBottom: 8 },
+  stopName: { fontSize: 15, fontWeight: '600', color: theme.colors.ink },
+  listNumber: { minWidth: 36, minHeight: 36, borderRadius: 16, paddingHorizontal: 7, justifyContent: 'center' },
   numberText: { color: '#fff', fontWeight: '700', textAlign: 'center' },
-  sectionLabel: { color: '#146775', fontSize: 12, fontWeight: '700' },
+  sectionLabel: { color: theme.colors.primary, fontSize: 12, fontWeight: '700' },
   lodging: { color: '#855139', fontSize: 17, fontWeight: '700' },
   wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   pinLabel: { maxWidth: 220, backgroundColor: '#fffdf7', borderRadius: 8, padding: 7, elevation: 3 },
-  pinText: { color: '#213b3d', fontSize: 13, fontWeight: '700' },
+  pinText: { color: theme.colors.ink, fontSize: 13, fontWeight: '700' },
 });
