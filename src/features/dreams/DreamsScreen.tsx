@@ -56,7 +56,7 @@ export default function DreamsScreen() {
           <TextInput accessibilityLabel="Dream latitude" placeholder="Latitude (optional)" keyboardType="numbers-and-punctuation" style={[styles.input, { flex: 1 }]} value={latitude} onChangeText={setLatitude} />
           <TextInput accessibilityLabel="Dream longitude" placeholder="Longitude (optional)" keyboardType="numbers-and-punctuation" style={[styles.input, { flex: 1 }]} value={longitude} onChangeText={setLongitude} />
         </View>
-        <Text style={styles.text}>Coordinates are optional. If used, enter both; they are stored only as your metadata and do not add a map marker.</Text>
+        <Text style={styles.text}>Coordinates are optional. Enter both to show this wish in the Map tab’s Dreaming layer. A dream never counts as a confirmed visit.</Text>
         <Action title={busy ? 'Saving…' : 'Add Dream'} disabled={busy} onPress={() => { void create(); }} />
         {result.error ? <Problem error={result.error} retry={result.retry} /> : error ? <Problem error={error} /> : null}
       </View>}

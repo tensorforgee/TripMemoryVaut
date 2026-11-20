@@ -5,6 +5,8 @@ import { useRouter } from 'expo-router';
 import { coordinate, segmentKey, type RoadProposal, type SavedRoadRoute, type SegmentInput } from './model';
 import { configuredLiveRoutingProvider } from './live-provider';
 import { RouteProposalSession } from './proposals';
+import { Action } from '../trips/ui';
+import { theme } from '../../shared/ui/theme';
 
 export function RoadRouteEditor({ tripId, segments, saved, labels, onPreview, onDirty }: {
   tripId: string; segments: SegmentInput[]; saved: SavedRoadRoute[]; labels: Record<string,string>;
@@ -42,11 +44,11 @@ export function RoadRouteEditor({ tripId, segments, saved, labels, onPreview, on
       })(); } }]);
   };
   return <View style={styles.stack}>
+    <Action title={running ? 'Generating…' : 'Generate all segments'} disabled={running || !sessions.length} onPress={() => generate(sessions)} />
+    <Text accessibilityLiveRegion="polite" style={styles.title}>{sessions.filter(session => session.proposal).length}/{sessions.length} segments previewed · session only</Text>
     <Text style={styles.body}>Road previews follow the provider’s mapped roads. They are suggestions, not proof of the exact historical route, and are not saved or exported.</Text>
-    <View style={styles.row}><Action title="Provider terms" onPress={() => { void Linking.openURL('https://account.heigit.org/info/tos'); }} />
-      <Action title="Routing settings" onPress={() => router.push('/settings/routing')} />
-      <Action title={running ? 'Generating…' : 'Generate all segments'} disabled={running || !sessions.length} onPress={() => generate(sessions)} />
-      <Action title="Discard all previews / edits" disabled={running} onPress={() => {
+    <View style={styles.row}><Action secondary title="Routing settings" onPress={() => router.push('/settings/routing')} />
+      <Action secondary title="Discard previews / edits" disabled={running} onPress={() => {
         sessions.forEach(session => session.editVia(saved.find(r => segmentKey(r.input) === segmentKey(session.input))?.viaPoints ?? [])); render();
       }} /></View>
     <Text accessibilityLiveRegion="polite" style={styles.body}>{sessions.filter(session => session.proposal).length}/{sessions.length} road segments previewed{running ? ' · Generating in Stop order…' : ''}{sessions.some(session => session.error) ? ' · Some segments failed; dashed connections remain approximate.' : ''}</Text>
@@ -58,26 +60,32 @@ export function RoadRouteEditor({ tripId, segments, saved, labels, onPreview, on
         <Text style={styles.title}>{labels[session.input.fromStopId]} → {labels[session.input.toStopId]}</Text>
         <Text style={styles.body}>{prior ? prior.stale ? 'Saved suggestion is stale — Stops changed. Preserved locally; hidden from the current road layer.'
           : 'Confirmed generated suggestion saved on device.' : 'No confirmed road geometry.'}</Text>
-        <ViaEditor session={session} disabled={running} changed={() => { setNotice('Via points changed. Generate again to preview.'); render(); }} />
         {!!session.error && <Text style={styles.error} accessibilityLiveRegion="polite">{session.error}</Text>}
         {session.proposal && <Text style={styles.body}>PREVIEW — temporary · {session.proposal.geometry.coordinates.length} geometry points{session.proposal.distanceMeters === null ? '' : ` · provider distance ${(session.proposal.distanceMeters / 1000).toFixed(1)} km`}. Inspect the blue road line on the map.</Text>}
         <View style={styles.row}>
           <Action title={session.error ? 'Retry segment' : 'Generate segment'} disabled={running} onPress={() => generate([session])} />
-          <Action title="Discard proposal / edits" disabled={running} onPress={() => { session.editVia(prior?.viaPoints ?? []); render(); }} />
+          <Action secondary title="Discard segment edits" disabled={running} onPress={() => { session.editVia(prior?.viaPoints ?? []); render(); }} />
         </View>
+        <ViaEditor session={session} disabled={running} changed={() => { setNotice('Via points changed. Generate again to preview.'); render(); }} />
       </View>;
     })}
     {saved.filter(r => !segments.some(s => segmentKey(s) === segmentKey(r.input))).length > 0 && <Text style={styles.body}>Saved segments whose Stops are no longer adjacent are retained as stale archive data. They are not drawn as the current route.</Text>}
     <Text style={styles.body}>Via points only shape this suggestion. They do not add visited Places or Stops. ORS results and via edits are temporary previews; this milestone does not save or export new generated geometry.</Text>
+    <Action secondary title="Provider terms" onPress={() => { void Linking.openURL('https://account.heigit.org/info/tos'); }} />
   </View>;
 }
 
 function ViaEditor({ session, disabled, changed }: { session: RouteProposalSession; disabled: boolean; changed: () => void }) {
+  const [expanded, setExpanded] = useState(false);
   const [latitude,setLatitude] = useState(''), [longitude,setLongitude] = useState(''), [error,setError] = useState('');
   const edit = (points: typeof session.viaPoints) => {
     try { session.editVia(points); setError(''); changed(); } catch(e) { setError(e instanceof Error ? e.message : 'Invalid via point.'); }
   };
   return <View style={styles.stack}>
+    <Pressable accessibilityRole="button" accessibilityState={{ expanded }} onPress={() => setExpanded(value => !value)} style={styles.button}>
+      <Text style={styles.buttonText}>{expanded ? 'Hide' : 'Edit'} via points ({session.viaPoints.length})</Text>
+    </Pressable>
+    {expanded && <>
     {session.viaPoints.map((point,index) => <View key={point.id} style={styles.stack}>
       <Text style={styles.body}>Via {index+1}: {point.coordinate[1]}, {point.coordinate[0]}</Text>
       <View style={styles.row}><Action title={`Move via ${index+1} up`} disabled={disabled || index===0} onPress={() => {
@@ -99,16 +107,13 @@ function ViaEditor({ session, disabled, changed }: { session: RouteProposalSessi
       }} />
     </View>
     {!!error && <Text style={styles.error}>{error}</Text>}
+    </>}
   </View>;
 }
 
-function Action({title,onPress,disabled=false}:{title:string;onPress:()=>void;disabled?:boolean}) {
-  return <Pressable accessibilityRole="button" accessibilityState={{disabled}} disabled={disabled} onPress={onPress}
-    style={[styles.button, disabled && {opacity:0.45}]}><Text style={styles.buttonText}>{title}</Text></Pressable>;
-}
 const styles = StyleSheet.create({
   stack:{gap:8}, row:{flexDirection:'row',flexWrap:'wrap',gap:6}, segment:{gap:10,borderTopWidth:1,borderColor:'#ccd8d4',paddingVertical:12},
-  title:{fontWeight:'700',fontSize:15,color:'#213b3d'}, body:{fontSize:12,lineHeight:18,color:'#465f5c'}, error:{fontSize:12,color:'#913d29'},
-  button:{minHeight:44,padding:10,borderRadius:8,backgroundColor:'#e8efeb',justifyContent:'center'},buttonText:{fontSize:12,fontWeight:'700',color:'#146775'},
-  input:{minWidth:100,flexGrow:1,borderWidth:1,borderColor:'#9baea9',borderRadius:8,padding:8,minHeight:44,color:'#213b3d'},
+  title:{fontWeight:'700',fontSize:16,color:theme.colors.ink}, body:{fontSize:14,lineHeight:21,color:theme.colors.text}, error:{fontSize:14,color:theme.colors.error},
+  button:{minHeight:48,padding:12,borderRadius:8,backgroundColor:theme.colors.selected,justifyContent:'center'},buttonText:{fontSize:14,fontWeight:'600',color:theme.colors.primary},
+  input:{minWidth:120,flexGrow:1,borderWidth:1,borderColor:theme.colors.muted,borderRadius:8,padding:12,minHeight:48,fontSize:16,color:theme.colors.ink},
 });

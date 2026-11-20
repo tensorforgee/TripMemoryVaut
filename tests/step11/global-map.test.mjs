@@ -9,6 +9,7 @@ import { DreamRepository } from '../../.expo/step1-tests/features/dreams/reposit
 import { TravelLifeRepository } from '../../.expo/step1-tests/features/life/repository.js';
 import { GlobalMapRepository, visitDateLabel } from '../../.expo/step1-tests/features/map/repository.js';
 import { fitTripCamera } from '../../.expo/step1-tests/features/map/model.js';
+import { lifetimePlaces } from '../../.expo/step1-tests/features/map/lifetime-map.js';
 
 const stamp = '2026-09-30T12:00:00.000Z';
 const exactDay = value => ({ start: { precision: 'day', value }, end: null, certainty: 'exact', source: 'user' });
@@ -16,6 +17,27 @@ const exactMonth = value => ({ start: { precision: 'month', value }, end: null, 
 const exactYear = value => ({ start: { precision: 'year', value: String(value) }, end: null, certainty: 'exact', source: 'user' });
 const approximateYear = value => ({ start: { precision: 'year', value: String(value) }, end: null, certainty: 'approximate', source: 'user' });
 const unknown = () => ({ start: { precision: 'unknown' }, end: null, certainty: 'unknown', source: 'user' });
+
+test('lifetime layers keep wishes separate, retain unknown coordinates and exclude fulfilled/archived/removed dreams', async t => {
+  const f = await fixture(t); const r = repositories(f);
+  const trip = await savedTrip(r, 'Synthetic map', unknown());
+  const place = await r.routes.createPlace({ name: 'Visit', latitude: 31, longitude: 77, coordinatePrecision: 'point' });
+  await r.routes.addStop(trip.id, { placeId: place.id });
+  const wish = await r.dreams.create({ title: 'Wish at zero', latitude: 0, longitude: 0 });
+  const unknownWish = await r.dreams.create({ title: 'Location unknown' });
+  const archive = await r.map.archive();
+  const before = structuredClone(archive);
+  const layers = lifetimePlaces(archive, [wish, unknownWish,
+    { ...wish, id: randomUUID(), status: 'visited' },
+    { ...wish, id: randomUUID(), isArchived: true },
+    { ...wish, id: randomUUID(), deletedAt: stamp }]);
+  assert.equal(layers.length, 3);
+  assert.equal(layers.filter(p => p.layer === 'been').length, 1);
+  assert.deepEqual(layers.find(p => p.dream?.id === wish.id).coordinate, [0, 0]);
+  assert.equal(layers.find(p => p.dream?.id === unknownWish.id).coordinate, null);
+  assert.equal(layers.find(p => p.layer === 'been').visit.visitCount, 1);
+  assert.deepEqual(archive, before);
+});
 
 function repositories(f, vaultId = f.vault.id) {
   return {

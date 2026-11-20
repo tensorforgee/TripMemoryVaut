@@ -9,6 +9,7 @@ import { mediaService } from '../media/service';
 import { Action, message, Problem, styles } from '../trips/ui';
 import { coordinateLabel, type PinDraft } from './photo-memory-model';
 import type { PhotoMemoryPin, VaultPhoto } from './photo-memory-repository';
+import { theme } from '../../shared/ui/theme';
 
 function useMedia() {
   const [service, setService] = useState<ImportPipeline>();
@@ -29,15 +30,15 @@ export function PhotoMemoryMarkers({ pins, select }: { pins: PhotoMemoryPin[]; s
   const service = useMedia();
   return <>{pins.map(pin => <Marker key={pin.id} id={`photo-${pin.id}`} lngLat={[pin.longitude,pin.latitude]} anchor="bottom"
     onPress={event => { event.stopPropagation(); select(pin); }} accessibilityRole="button" accessibilityLabel={`Photo memory: ${pin.note || pin.original_filename || 'Imported photo'}`}>
-    <View pointerEvents="none" style={{ width: 48, height: 48, borderWidth: 3, borderColor: '#146775', borderRadius: 8, backgroundColor: '#fff', overflow: 'hidden' }}>
+    <View pointerEvents="none" style={{ width: 48, height: 48, borderWidth: 3, borderColor: theme.colors.primary, borderRadius: 8, backgroundColor: '#fff', overflow: 'hidden' }}>
       <Preview photo={pin} service={service} />
     </View>
   </Marker>)}</>;
 }
 
-export function PhotoMemoryEditor({ tripId, draft, setDraft, selected, setSelected, pins }: {
+export function PhotoMemoryEditor({ tripId, draft, setDraft, selected, setSelected, pins, compact = false }: {
   tripId: string; draft: PinDraft | null; setDraft: (value: PinDraft | null) => void;
-  selected: PhotoMemoryPin | null; setSelected: (pin: PhotoMemoryPin | null) => void; pins: PhotoMemoryPin[];
+  selected: PhotoMemoryPin | null; setSelected: (pin: PhotoMemoryPin | null) => void; pins: PhotoMemoryPin[]; compact?: boolean;
 }) {
   const service = useMedia();
   const [photos, setPhotos] = useState<VaultPhoto[]>([]);
@@ -91,16 +92,16 @@ export function PhotoMemoryEditor({ tripId, draft, setDraft, selected, setSelect
   };
   const current = selected ?? chosen;
   return <>
-    <View style={{flexDirection:'row',paddingHorizontal:16,gap:8,alignItems:'center',flexWrap:'wrap'}}>
-      <Text style={{color:'#465f5c',fontSize:12,flex:1}}>{draft?.moving ? 'Long-press the new location, then save.' : 'Long-press the map to add a photo memory.'}</Text>
+    <View style={{flexDirection:'row',paddingHorizontal:compact ? 0 : 16,gap:8,alignItems:'center',flexWrap:'wrap'}}>
+      {!compact && <Text style={{color:theme.colors.muted,fontSize:14,flex:1}}>{draft?.moving ? 'Long-press the new location, then save.' : 'Long-press the map to add a photo memory.'}</Text>}
       {draft?.moving ? <Action title="Cancel move" onPress={() => setDraft({...draft,moving:false})} />
-        : <Action title={`Photo memories (${pins.length})`} onPress={() => {setShowList(true);setError('');}} />}
+        : <Action secondary={compact} title={`${compact ? 'Photo pins' : 'Photo memories'} (${pins.length})`} onPress={() => {setShowList(true);setError('');}} />}
     </View>
     <Modal visible={!!selected || (!!draft && !draft.moving) || showList} onRequestClose={close} animationType="slide">
       {(selected || draft || showList) && <SafeAreaView style={[styles.page,{padding:16}]}>
         <Action title={draft ? 'Cancel' : viewer ? 'Close photo' : 'Close photo memories'} onPress={() => viewer ? setViewer(false) : close()} />
         {error ? <Problem error={error} /> : null}
-        {showList && !selected && !draft ? <FlatList data={pins} keyExtractor={p=>p.id} ListEmptyComponent={<Text style={styles.text}>Long-press any map location to attach an imported photo.</Text>}
+        {showList && !selected && !draft ? <FlatList data={pins} keyExtractor={p=>p.id} ListHeaderComponent={<Text style={styles.text}>Long-press any map location to attach an imported photo.</Text>}
           renderItem={({item}) => <Pressable accessibilityRole="button" onPress={() => {setSelected(item);setShowList(false);}} style={{padding:12,flexDirection:'row',gap:12}}>
             <View style={{width:56,height:56}}><Preview photo={item} service={service} /></View><View style={{flex:1}}><Text style={styles.text}>{item.note || item.original_filename || 'Photo memory'}</Text><Text>{coordinateLabel([item.longitude,item.latitude])}</Text></View>
           </Pressable>} /> : viewer && current ? <View style={{flex:1}}><Preview photo={current} service={service} large /></View> : <>
